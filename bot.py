@@ -1,4 +1,5 @@
 """Discord Image Upscaler Bot - Main bot implementation."""
+import asyncio
 import io
 import discord
 from discord.ext import commands
@@ -18,13 +19,19 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 
 async def download_image(url: str) -> bytes:
-    """Download image from URL."""
-    async with aiohttp.ClientSession() as session:
+    """Download image from URL with timeout."""
+    timeout = aiohttp.ClientTimeout(total=30)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.get(url) as response:
             if response.status == 200:
                 return await response.read()
             else:
-                raise Exception(f"Failed to download image: HTTP {response.status}")
+                raise aiohttp.ClientResponseError(
+                    request_info=response.request_info,
+                    history=response.history,
+                    status=response.status,
+                    message=f"Failed to download image: HTTP {response.status}"
+                )
 
 
 def _upscale_image_sync(image_data: bytes, factor: int) -> io.BytesIO:
@@ -53,8 +60,7 @@ def _upscale_image_sync(image_data: bytes, factor: int) -> io.BytesIO:
 
 async def upscale_image(image_data: bytes, factor: int = UPSCALE_FACTOR) -> io.BytesIO:
     """Upscale image using Lanczos resampling in an executor."""
-    import asyncio
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _upscale_image_sync, image_data, factor)
 
 
