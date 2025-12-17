@@ -80,15 +80,6 @@ class Database:
     async def add_job(self, user_id: int, channel_id: int, image_url: str, model_type: str) -> int:
         """
         Insert a new upscale job and return its generated job_id.
-
-        Args:
-            user_id: Discord user ID that requested the upscale.
-            channel_id: Discord channel ID where the result should be posted.
-            image_url: Public URL of the image to process.
-            model_type: The model variant to use (e.g. 'general' or 'anime').
-
-        Returns:
-            The integer job_id assigned by the database.
         """
         async with self.pool.acquire() as conn:
             return await conn.fetchval(
@@ -103,30 +94,34 @@ class Database:
                 model_type,
             )
 
-    async def get_next_queued_job(self) -> Optional[Dict[str, Any]]:
+    async def claim_next_queued_job(self) -> Optional[Dict[str, Any]]:
         """
-        Retrieve the oldest job with status 'queued' and return it as a dict.
-
-        Returns:
-            A dictionary representation of the job row, or None if none exist.
+        Atomically claim the oldest queued job using row locking to support
+        multiple workers safely. Uses FOR UPDATE SKIP LOCKED to prevent
+        double-claiming.
         """
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT * FROM upscale_jobs
-                WHERE status = 'queued'
-                ORDER BY created_at ASC
-                LIMIT 1
-                """
-            )
-            return dict(row) if row else None
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    """
+                    SELECT * FROM upscale_jobs
+                    WHERE status = 'queued'
+                    ORDER BY created_at ASC
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT 1
+                    """
+                )
+                if row:
+                    await conn.execute(
+                        "UPDATE upscale_jobs SET status = 'processing' WHERE job_id = $1",
+                        row["job_id"],
+                    )
+                    return dict(row)
+                return None
 
     async def mark_processing(self, job_id: int):
         """
         Transition a job to the 'processing' status.
-
-        Args:
-            job_id: ID of the job to mark.
         """
         async with self.pool.acquire() as conn:
             await conn.execute("UPDATE upscale_jobs SET status = 'processing' WHERE job_id = $1", job_id)
@@ -134,10 +129,6 @@ class Database:
     async def mark_completed(self, job_id: int, output_path: str):
         """
         Mark a job as completed and record the path to the generated output file.
-
-        Args:
-            job_id: ID of the job to mark.
-            output_path: Filesystem path to the produced upscaled image.
         """
         async with self.pool.acquire() as conn:
             await conn.execute(
@@ -150,10 +141,6 @@ class Database:
         """
         Mark a job as failed. The failure reason is stored in the output_path
         column for operational visibility.
-
-        Args:
-            job_id: ID of the job to mark.
-            reason: Human-readable failure reason to record.
         """
         async with self.pool.acquire() as conn:
             await conn.execute(
@@ -165,9 +152,6 @@ class Database:
     async def get_completed_jobs(self):
         """
         Fetch all jobs with status 'completed' that are ready for delivery.
-
-        Returns:
-            A list of dictionaries representing completed job rows.
         """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("SELECT * FROM upscale_jobs WHERE status = 'completed'")
@@ -176,9 +160,6 @@ class Database:
     async def mark_job_sent(self, job_id: int):
         """
         Mark a job as 'sent' after delivery to avoid duplicate deliveries.
-
-        Args:
-            job_id: ID of the job to transition.
         """
         async with self.pool.acquire() as conn:
             await conn.execute("UPDATE upscale_jobs SET status = 'sent' WHERE job_id = $1", job_id)
