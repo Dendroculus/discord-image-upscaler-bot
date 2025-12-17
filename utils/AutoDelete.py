@@ -1,14 +1,28 @@
 import os
 import discord
 
+"""
+AutoDelete.py
+
+Utility to deliver completed upscaled images and remove local files afterwards.
+
+The primary coroutine `delete_stored_images(bot)` expects a bot instance that
+contains a `db` attribute compatible with Database.get_completed_jobs and
+Database.mark_job_sent. The routine will attempt to send completed images to
+their channels, delete local files, and mark jobs as sent in the database.
+"""
+
+
 async def delete_stored_images(bot):
     """
-    Fetches completed jobs from the DB, sends the image to the user, 
-    and then deletes the local file to save space.
+    Deliver completed jobs' images to channels and remove local files.
+
+    The function iterates over completed jobs, attempts to send the image
+    to the configured channel, deletes the file regardless of delivery
+    success to prevent disk accumulation, and marks the job as sent.
     """
-    # Access the database attached to the bot instance
     completed_jobs = await bot.db.get_completed_jobs()
-    
+
     for job in completed_jobs:
         job_id = job["job_id"]
         channel_id = job["channel_id"]
@@ -16,41 +30,34 @@ async def delete_stored_images(bot):
         user_id = job["user_id"]
         model_type = job["model_type"]
 
-        # 1. Validate File Exists
         if not os.path.exists(file_path):
             print(f"⚠️ File missing for job #{job_id}: {file_path}")
             await bot.db.mark_job_sent(job_id)
             continue
 
-        # 2. Get the Channel
         try:
-            # Try cache first, then API
             channel = bot.get_channel(channel_id) or await bot.fetch_channel(channel_id)
         except Exception:
             channel = None
 
-        # 3. Send & Delete
         try:
             if channel:
                 await channel.send(
                     content=f"Upscale complete for <@{user_id}>! (Mode: `{model_type}`)",
-                    file=discord.File(file_path)
+                    file=discord.File(file_path),
                 )
                 print(f"📨 Delivered job #{job_id}")
 
-            # ✅ CRITICAL: Delete file immediately after sending
             os.remove(file_path)
             print(f"🗑️ Deleted local file: {file_path}")
 
-            # Mark as sent in DB
             await bot.db.mark_job_sent(job_id)
 
         except discord.Forbidden:
             print(f"❌ No permission to send in channel {channel_id}")
             await bot.db.mark_job_sent(job_id)
-            # Still delete the file so it doesn't rot on your drive
-            if os.path.exists(file_path): 
+            if os.path.exists(file_path):
                 os.remove(file_path)
-        
+
         except Exception as e:
             print(f"❌ Error delivering job #{job_id}: {e}")
