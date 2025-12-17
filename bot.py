@@ -5,30 +5,56 @@ from discord import app_commands
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 from utils.AutoDelete import delete_stored_images
-
 from database import Database
 
 load_dotenv()
-    
+
 patch_torchvision()
+
+
+"""
+bot.py
+
+Discord bot responsible for receiving image upscale requests, persisting them to
+the database, and delivering completed results back to the originating channel.
+
+This module exposes the UpscaleBot class and a top-level slash command
+implementation for enqueueing jobs. Use `main()` to run the bot process.
+"""
+
 
 class UpscaleBot(commands.Bot):
     """
-    Discord bot responsible for accepting upscale requests, persisting them,
-    and delivering completed results back to the originating channel.
+    Discord bot that handles upscale job lifecycle and delivery.
+
+    Attributes:
+        db (Database): Asynchronous database wrapper for job persistence.
     """
 
     def __init__(self):
+        """
+        Initialize the bot without a text command prefix and prepare the DB.
+        """
         intents = discord.Intents.default()
         super().__init__(command_prefix=None, intents=intents)
         self.db = Database()
-        
+
     @tasks.loop(seconds=10)
     async def periodic_image_cleanup(self):
+        """
+        Periodic task that removes local image files after delivery.
+
+        This task delegates to the helper `delete_stored_images` which
+        fetches completed jobs, delivers the image to the channel (if possible),
+        deletes the local file, and marks the job as sent.
+        """
         await delete_stored_images(self)
 
     async def setup_hook(self):
-        """Initialize database, sync commands, and start delivery loop."""
+        """
+        Bot startup hook that prepares the database, synchronizes application
+        commands with Discord, and starts background delivery loops.
+        """
         await self.db.connect()
         await self.db.init_schema()
         await self.tree.sync()
@@ -36,14 +62,18 @@ class UpscaleBot(commands.Bot):
         print("Bot online. Ready to accept upscale requests.")
 
     async def close(self):
-        """Gracefully close resources."""
+        """
+        Gracefully close the database pool and the underlying bot.
+        """
         await self.db.close()
         await super().close()
 
     @tasks.loop(seconds=5)
     async def check_completed_jobs(self):
         """
-        Periodically scan for completed jobs and post results to their channels.
+        Background loop that polls the database for completed jobs and
+        attempts to deliver the resulting image files to the appropriate
+        channels. Mark delivered jobs as sent so they are not reprocessed.
         """
         completed_jobs = await self.db.get_completed_jobs()
         for job in completed_jobs:
@@ -74,7 +104,9 @@ class UpscaleBot(commands.Bot):
 
     @check_completed_jobs.before_loop
     async def before_checks(self):
-        """Ensure bot is ready before starting loops."""
+        """
+        Ensure the bot is fully ready before starting the delivery loop.
+        """
         await self.wait_until_ready()
 
 
@@ -95,7 +127,16 @@ async def upscale(
     type: app_commands.Choice[str],
 ):
     """
-    Slash command handler that enqueues an upscale job.
+    Slash command that enqueues an image upscale job.
+
+    The command accepts an attachment and a model type choice, validates the
+    input, defers the interaction to gain processing time, persists a job row,
+    and notifies the user that their job was queued.
+
+    Args:
+        interaction: The Discord interaction object for this command.
+        image: The uploaded attachment to upscale.
+        type: The selected model type choice.
     """
     if not image.content_type or not image.content_type.startswith("image/"):
         return await interaction.response.send_message("❌ Image files only.", ephemeral=True)
@@ -115,7 +156,12 @@ async def upscale(
 
 
 def main():
-    """Entry point to run the Discord bot."""
+    """
+    Entry point to run the Discord bot process.
+
+    Reads DISCORD_TOKEN from the environment and runs the bot. Raises a
+    RuntimeError if the token is not set.
+    """
     token = os.getenv("DISCORD_TOKEN")
     if not token:
         raise RuntimeError("DISCORD_TOKEN is not set in the environment.")

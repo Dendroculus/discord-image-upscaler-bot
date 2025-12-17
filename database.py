@@ -7,33 +7,58 @@ load_dotenv()
 
 DB_DSN = os.getenv("POSTGRE_CONN_STRING")
 
+"""
+database.py
+
+Asynchronous thin wrapper around asyncpg to manage upscale job persistence.
+
+The Database class offers connection pool management, schema initialization,
+simple in-place migrations, and CRUD-like helpers used by the bot and worker.
+"""
+
 
 class Database:
     """
-    Thin async wrapper around asyncpg for storing and retrieving upscale jobs.
-    Handles schema initialization and simple in-place migrations.
+    Async helper for storing and retrieving upscale jobs.
+
+    The class encapsulates an asyncpg connection pool and provides methods to
+    initialize schema, add jobs, claim jobs for processing, and update status
+    transitions.
     """
 
     def __init__(self, dsn: str = DB_DSN):
+        """
+        Initialize the Database helper.
+
+        Args:
+            dsn: The PostgreSQL DSN used to create the connection pool.
+        """
         self.dsn = dsn
         self.pool: Optional[asyncpg.Pool] = None
 
     async def connect(self):
-        """Initialize the connection pool."""
+        """
+        Create the asyncpg connection pool.
+
+        This must be awaited before performing queries.
+        """
         self.pool = await asyncpg.create_pool(self.dsn)
 
     async def close(self):
-        """Close the connection pool."""
+        """
+        Close the connection pool if it exists.
+        """
         if self.pool:
             await self.pool.close()
 
     async def init_schema(self):
         """
-        Create or migrate the upscale_jobs table.
-        Ensures channel_id exists and is NOT NULL for routing deliveries.
+        Ensure the 'upscale_jobs' table exists and perform lightweight migrations.
+
+        The table stores job metadata and supports a simple status lifecycle:
+        'queued' -> 'processing' -> 'completed' -> 'sent' (or 'failed').
         """
         async with self.pool.acquire() as conn:
-            # Base table
             await conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS upscale_jobs (
@@ -48,13 +73,23 @@ class Database:
                 );
                 """
             )
-            # Migration: add channel_id if missing
             await conn.execute("ALTER TABLE upscale_jobs ADD COLUMN IF NOT EXISTS channel_id BIGINT;")
             await conn.execute("UPDATE upscale_jobs SET channel_id = 0 WHERE channel_id IS NULL;")
             await conn.execute("ALTER TABLE upscale_jobs ALTER COLUMN channel_id SET NOT NULL;")
 
     async def add_job(self, user_id: int, channel_id: int, image_url: str, model_type: str) -> int:
-        """Insert a new job and return its ID."""
+        """
+        Insert a new upscale job and return its generated job_id.
+
+        Args:
+            user_id: Discord user ID that requested the upscale.
+            channel_id: Discord channel ID where the result should be posted.
+            image_url: Public URL of the image to process.
+            model_type: The model variant to use (e.g. 'general' or 'anime').
+
+        Returns:
+            The integer job_id assigned by the database.
+        """
         async with self.pool.acquire() as conn:
             return await conn.fetchval(
                 """
@@ -69,7 +104,12 @@ class Database:
             )
 
     async def get_next_queued_job(self) -> Optional[Dict[str, Any]]:
-        """Fetch the oldest queued job. Returns None if no job is available."""
+        """
+        Retrieve the oldest job with status 'queued' and return it as a dict.
+
+        Returns:
+            A dictionary representation of the job row, or None if none exist.
+        """
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -82,15 +122,23 @@ class Database:
             return dict(row) if row else None
 
     async def mark_processing(self, job_id: int):
-        """Mark a job as processing."""
+        """
+        Transition a job to the 'processing' status.
+
+        Args:
+            job_id: ID of the job to mark.
+        """
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE upscale_jobs SET status = 'processing' WHERE job_id = $1",
-                job_id,
-            )
+            await conn.execute("UPDATE upscale_jobs SET status = 'processing' WHERE job_id = $1", job_id)
 
     async def mark_completed(self, job_id: int, output_path: str):
-        """Mark a job as completed and store the output path."""
+        """
+        Mark a job as completed and record the path to the generated output file.
+
+        Args:
+            job_id: ID of the job to mark.
+            output_path: Filesystem path to the produced upscaled image.
+        """
         async with self.pool.acquire() as conn:
             await conn.execute(
                 "UPDATE upscale_jobs SET status = 'completed', output_path = $2 WHERE job_id = $1",
@@ -99,7 +147,14 @@ class Database:
             )
 
     async def mark_failed(self, job_id: int, reason: str):
-        """Mark a job as failed (reason is logged server-side only)."""
+        """
+        Mark a job as failed. The failure reason is stored in the output_path
+        column for operational visibility.
+
+        Args:
+            job_id: ID of the job to mark.
+            reason: Human-readable failure reason to record.
+        """
         async with self.pool.acquire() as conn:
             await conn.execute(
                 "UPDATE upscale_jobs SET status = 'failed', output_path = $2 WHERE job_id = $1",
@@ -108,15 +163,22 @@ class Database:
             )
 
     async def get_completed_jobs(self):
-        """Return all jobs ready to be delivered (completed but not sent)."""
+        """
+        Fetch all jobs with status 'completed' that are ready for delivery.
+
+        Returns:
+            A list of dictionaries representing completed job rows.
+        """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("SELECT * FROM upscale_jobs WHERE status = 'completed'")
             return [dict(r) for r in rows]
 
     async def mark_job_sent(self, job_id: int):
-        """Mark a job as sent to avoid duplicate deliveries."""
+        """
+        Mark a job as 'sent' after delivery to avoid duplicate deliveries.
+
+        Args:
+            job_id: ID of the job to transition.
+        """
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE upscale_jobs SET status = 'sent' WHERE job_id = $1",
-                job_id,
-            )
+            await conn.execute("UPDATE upscale_jobs SET status = 'sent' WHERE job_id = $1", job_id)
