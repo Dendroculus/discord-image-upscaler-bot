@@ -1,0 +1,1 @@
+# discord-image-upscaler-bot
