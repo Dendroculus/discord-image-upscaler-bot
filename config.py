@@ -8,8 +8,12 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 
 # Upscaling Configuration
-UPSCALE_FACTOR = int(os.getenv('UPSCALE_FACTOR', '2'))
-MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', '8'))
+try:
+    UPSCALE_FACTOR = int(os.getenv('UPSCALE_FACTOR', '2'))
+    MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', '8'))
+except ValueError as e:
+    raise ValueError(f"Invalid configuration: UPSCALE_FACTOR and MAX_FILE_SIZE_MB must be integers. Error: {e}")
+
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 # Supported image formats

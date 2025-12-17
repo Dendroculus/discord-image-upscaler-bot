@@ -27,10 +27,13 @@ async def download_image(url: str) -> bytes:
                 raise Exception(f"Failed to download image: HTTP {response.status}")
 
 
-async def upscale_image(image_data: bytes, factor: int = UPSCALE_FACTOR) -> io.BytesIO:
-    """Upscale image using Lanczos resampling."""
-    # Open image from bytes
-    image = Image.open(io.BytesIO(image_data))
+def _upscale_image_sync(image_data: bytes, factor: int) -> io.BytesIO:
+    """Synchronous image upscaling (run in executor)."""
+    try:
+        # Open image from bytes
+        image = Image.open(io.BytesIO(image_data))
+    except Exception as e:
+        raise ValueError(f"Invalid or corrupted image data: {str(e)}")
     
     # Calculate new dimensions
     new_width = image.width * factor
@@ -46,6 +49,13 @@ async def upscale_image(image_data: bytes, factor: int = UPSCALE_FACTOR) -> io.B
     output.seek(0)
     
     return output
+
+
+async def upscale_image(image_data: bytes, factor: int = UPSCALE_FACTOR) -> io.BytesIO:
+    """Upscale image using Lanczos resampling in an executor."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _upscale_image_sync, image_data, factor)
 
 
 @bot.event
@@ -71,7 +81,11 @@ async def upscale(ctx):
         return
     
     # Check file format
-    file_ext = attachment.filename.lower()[attachment.filename.rfind('.'):]
+    dot_index = attachment.filename.rfind('.')
+    if dot_index == -1:
+        await ctx.send("❌ File has no extension! Supported formats: " + ", ".join(SUPPORTED_FORMATS))
+        return
+    file_ext = attachment.filename.lower()[dot_index:]
     if file_ext not in SUPPORTED_FORMATS:
         await ctx.send(f"❌ Unsupported format! Supported formats: {', '.join(SUPPORTED_FORMATS)}")
         return
