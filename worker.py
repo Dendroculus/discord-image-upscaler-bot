@@ -9,35 +9,48 @@ patch_torchvision()
 """
 worker.py
 
-Background worker process that continuously claims queued jobs from the
-database, runs the AI upscaling pipeline, and updates job status transitions.
-Instantiate Worker and call `start()` to run the processing loop.
-"""
+Background worker that polls the database for queued upscaling jobs,
+processes them with the AI pipeline, and updates job status transitions.
 
+Logic flow:
+1. On start(), connect to the database and ensure schema is present.
+2. Enter an infinite loop that:
+   - claims the next queued job (atomically),
+   - if a job exists, process it; otherwise sleep for poll_interval seconds.
+3. For each claimed job:
+   - run the image processing in a thread (using asyncio.to_thread) to avoid
+     blocking the event loop,
+   - mark the job as completed with output path on success,
+   - mark the job as failed with an error message on exception.
+"""
 
 class Worker:
     """
-    Worker that polls the database for queued jobs, processes them, and
-    updates their status based on the processing outcome.
+    Worker that continually claims and processes jobs.
 
     Attributes:
-        db (Database): Database helper instance.
-        poll_interval (float): Seconds to wait between polls when no job is found.
+        db (Database): Database helper used to claim and update jobs.
+        poll_interval (float): Pause duration when no job is available.
     """
 
     def __init__(self, poll_interval: float = 2.0):
         """
-        Initialize the worker and its database connection helper.
+        Initialize the worker.
 
         Args:
-            poll_interval: Interval in seconds between polling attempts.
+            poll_interval: Seconds to wait between polling attempts when no job is found.
         """
         self.db = Database()
         self.poll_interval = poll_interval
 
     async def start(self):
         """
-        Connect to the database, initialize schema, and start the processing loop.
+        Connect and initialize the database, then start the processing loop.
+
+        Steps:
+        1. Connect to DB and initialize schema.
+        2. Log that the worker is online.
+        3. Enter the polling loop.
         """
         await self.db.connect()
         await self.db.init_schema()
@@ -46,8 +59,12 @@ class Worker:
 
     async def _run_loop(self):
         """
-        Forever loop that fetches the next job and processes it. Sleeps for the
-        configured poll interval when no job is available.
+        Poll for jobs indefinitely.
+
+        Behavior:
+        - Attempt to claim the next queued job.
+        - If a job is returned, process it.
+        - If not, sleep for self.poll_interval seconds, then retry.
         """
         while True:
             job = await self._next_job()
@@ -58,7 +75,10 @@ class Worker:
 
     async def _next_job(self) -> Optional[Dict[str, Any]]:
         """
-        Atomically claim the next queued job, safe for multiple worker instances.
+        Claim the next queued job using an atomic DB operation.
+
+        Returns:
+            A job dict if available, otherwise None.
         """
         return await self.db.claim_next_queued_job()
 
@@ -66,11 +86,11 @@ class Worker:
         """
         Execute the AI upscaling pipeline for a single job and update status.
 
-        The actual CPU/GPU-bound processing is delegated to `process_image`
-        and executed in a thread pool via asyncio.to_thread.
-
-        Args:
-            job: Job dictionary containing keys like job_id, image_url, and model_type.
+        Steps:
+        1. Log job start.
+        2. Run process_image in a thread to avoid blocking.
+        3. If an output path is returned, mark the job completed.
+        4. If processing fails or returns no output, mark the job failed.
         """
         job_id = job["job_id"]
         print(f"🔄 Processing job #{job_id} ({job['model_type']}) ...")
@@ -94,7 +114,10 @@ class Worker:
 
 async def main():
     """
-    Async entrypoint for running the worker process standalone.
+    Async entrypoint to run the worker standalone.
+
+    Usage:
+        asyncio.run(main())
     """
     worker = Worker(poll_interval=2.0)
     await worker.start()
