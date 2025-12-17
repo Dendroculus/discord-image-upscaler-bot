@@ -4,7 +4,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
-from utils.AutoDelete import delete_stored_images
 from database import Database
 
 load_dotenv()
@@ -39,17 +38,6 @@ class UpscaleBot(commands.Bot):
         super().__init__(command_prefix=None, intents=intents)
         self.db = Database()
 
-    @tasks.loop(seconds=10)
-    async def periodic_image_cleanup(self):
-        """
-        Periodic task that removes local image files after delivery.
-
-        This task delegates to the helper `delete_stored_images` which
-        fetches completed jobs, delivers the image to the channel (if possible),
-        deletes the local file, and marks the job as sent.
-        """
-        await delete_stored_images(self)
-
     async def setup_hook(self):
         """
         Bot startup hook that prepares the database, synchronizes application
@@ -73,7 +61,8 @@ class UpscaleBot(commands.Bot):
         """
         Background loop that polls the database for completed jobs and
         attempts to deliver the resulting image files to the appropriate
-        channels. Mark delivered jobs as sent so they are not reprocessed.
+        channels. After delivery, the local file is removed and the job is
+        marked as sent to prevent duplicate processing.
         """
         completed_jobs = await self.db.get_completed_jobs()
         for job in completed_jobs:
@@ -95,12 +84,19 @@ class UpscaleBot(commands.Bot):
                     file=discord.File(file_path),
                 )
                 print(f"📨 Delivered job #{job['job_id']} to channel {channel_id}")
-                await self.db.mark_job_sent(job["job_id"])
             except discord.Forbidden:
                 print(f"❌ Missing permission to send in channel {channel_id}")
-                await self.db.mark_job_sent(job["job_id"])
             except Exception as e:
                 print(f"❌ Delivery error for job {job['job_id']}: {e}")
+            finally:
+                # Clean up the file and mark as sent regardless of delivery outcome
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        print(f"🗑️ Deleted local file for job #{job['job_id']}: {file_path}")
+                    except Exception as cleanup_err:
+                        print(f"⚠️ Could not delete file for job #{job['job_id']}: {cleanup_err}")
+                await self.db.mark_job_sent(job["job_id"])
 
     @check_completed_jobs.before_loop
     async def before_checks(self):
@@ -132,11 +128,6 @@ async def upscale(
     The command accepts an attachment and a model type choice, validates the
     input, defers the interaction to gain processing time, persists a job row,
     and notifies the user that their job was queued.
-
-    Args:
-        interaction: The Discord interaction object for this command.
-        image: The uploaded attachment to upscale.
-        type: The selected model type choice.
     """
     if not image.content_type or not image.content_type.startswith("image/"):
         return await interaction.response.send_message("❌ Image files only.", ephemeral=True)
@@ -151,7 +142,7 @@ async def upscale(
     )
 
     await interaction.followup.send(
-        f"🧾 Job #{job_id} queued. I’ll post the result here when it’s ready!"
+        f"(●'◡'●) I'm UpScaling your image. Please wait for a moment, I'll post the result here when it's ready!"
     )
 
 

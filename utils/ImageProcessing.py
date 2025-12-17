@@ -38,6 +38,7 @@ class AIUpscaler:
     def __init__(self):
         """
         Initialize the upscaler with model paths, output folder, and device.
+        Models are loaded lazily and cached in memory to avoid repeated disk I/O.
         """
         self.model_path_general = os.path.join("models", "RealESRGAN_x4plus.pth")
         self.model_path_anime = os.path.join("models", "RealESRGAN_x4plus_anime_6B.pth")
@@ -45,18 +46,12 @@ class AIUpscaler:
         os.makedirs(self.output_folder, exist_ok=True)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.use_half = True if self.device.type == "cuda" else False
+        self._engines = {}  # model_type -> RealESRGANer
         print(f"🚀 AI Engine Initialized on: {self.device}")
 
-    def _get_model_instance(self, model_type: str, tile_size: int = 0) -> RealESRGANer:
+    def _load_engine(self, model_type: str) -> RealESRGANer:
         """
-        Construct and return a RealESRGANer instance for the requested model type.
-
-        Args:
-            model_type: 'anime' selects the anime model; any other value selects the general model.
-            tile_size: Tile size to use for tiled processing (0 = no tiling).
-
-        Returns:
-            An initialized RealESRGANer instance ready to perform `enhance`.
+        Load and cache a RealESRGANer instance for the requested model type.
         """
         if model_type == "anime":
             model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4)
@@ -68,35 +63,31 @@ class AIUpscaler:
         if not os.path.exists(path):
             raise FileNotFoundError(f"Model file missing: {path}")
 
-        return RealESRGANer(
+        engine = RealESRGANer(
             scale=4,
             model_path=path,
             model=model,
-            tile=tile_size,
+            tile=0,
             tile_pad=10,
             pre_pad=0,
             half=self.use_half,
             device=self.device,
         )
+        self._engines[model_type] = engine
+        return engine
+
+    def _get_engine(self, model_type: str) -> RealESRGANer:
+        """
+        Return a cached engine, loading it if necessary.
+        """
+        if model_type not in self._engines:
+            self._load_engine(model_type)
+        return self._engines[model_type]
 
     def run_upscale(self, image_url: str, job_id: int, model_type: str = "general") -> str:
         """
         Download an image from a URL, run the Real-ESRGAN upscaler, save the result,
         and return the filesystem path to the saved image.
-
-        Args:
-            image_url: Public URL of the source image.
-            job_id: Numeric job identifier used for logging.
-            model_type: Model selection string, e.g. 'general' or 'anime'.
-
-        Returns:
-            The path to the saved upscaled image on success.
-
-        Raises:
-            ConnectionError: If the image cannot be downloaded.
-            ValueError: If the downloaded data cannot be decoded as an image.
-            FileNotFoundError: If the configured model file is missing.
-            RuntimeError: For other processing problems.
         """
         try:
             print(f"📥 Job #{job_id} - Downloading image...")
@@ -112,7 +103,10 @@ class AIUpscaler:
             height, width = img.shape[:2]
             tile_size = 400 if (height > 1000 or width > 1000) else 0
 
-            upsampler = self._get_model_instance(model_type, tile_size)
+            upsampler = self._get_engine(model_type)
+            # Adjust tiling dynamically without reloading the model
+            upsampler.tile = tile_size
+
             print(f"⚡ Job #{job_id} - Processing ({model_type})...")
             output_img, _ = upsampler.enhance(img, outscale=4)
 
@@ -121,7 +115,6 @@ class AIUpscaler:
             cv2.imwrite(save_path, output_img)
 
             if self.device.type == "cuda":
-                del upsampler
                 torch.cuda.empty_cache()
                 gc.collect()
 
@@ -138,13 +131,5 @@ engine = AIUpscaler()
 def process_image(url: str, job_id: int, model_type: str) -> str:
     """
     Convenience wrapper around the singleton AIUpscaler instance.
-
-    Args:
-        url: The image URL to process.
-        job_id: Job identifier.
-        model_type: Model variant to use.
-
-    Returns:
-        Filesystem path of the generated image, or None on failure.
     """
     return engine.run_upscale(url, job_id, model_type)

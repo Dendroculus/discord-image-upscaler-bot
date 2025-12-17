@@ -58,15 +58,9 @@ class Worker:
 
     async def _next_job(self) -> Optional[Dict[str, Any]]:
         """
-        Fetch the next queued job and atomically mark it as processing.
-
-        Returns:
-            The job dict if a queued job was found, otherwise None.
+        Atomically claim the next queued job, safe for multiple worker instances.
         """
-        job = await self.db.get_next_queued_job()
-        if job:
-            await self.db.mark_processing(job["job_id"])
-        return job
+        return await self.db.claim_next_queued_job()
 
     async def _process_job(self, job: Dict[str, Any]):
         """
