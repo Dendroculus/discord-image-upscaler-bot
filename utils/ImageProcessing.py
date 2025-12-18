@@ -100,7 +100,8 @@ class AIUpscaler:
             self._load_engine(model_type)
         return self._engines[model_type]
 
-    def run_upscale(self, image_url: str, job_id: int, model_type: str = "general") -> str:
+    def run_upscale(self, image_url: str, job_id: int, model_type: str = "general") -> str | None:
+         # personal NOTE: str | none is same as Optional[str]
         """
         Download an image, run upscaling, save the file, and return its path.
 
