@@ -22,9 +22,9 @@ class UpscaleCog(commands.Cog):
     Cog that exposes the /upscale command.
 
     The command:
-    - accepts an image attachment and a model type choice,
-    - validates the attachment is an image,
-    - enqueues a job in the database and reports the job id back to the user.
+    - Accepts an image attachment and a model type choice,
+    - Validates the attachment is an image,
+    - Enqueues a job in the database and reports the job id back to the user.
     """
 
     def __init__(self, bot):
@@ -53,15 +53,8 @@ class UpscaleCog(commands.Cog):
 
         await interaction.response.defer(thinking=True)
 
-        job_id = await self.bot.db.add_job(
-            user_id=interaction.user.id,
-            channel_id=interaction.channel.id,
-            image_url=image.url,
-            model_type=type.value,
-        )
-
         await interaction.followup.send(
-            f"(●'◡'●) I'm UpScaling your image. I'll send the upscaled image here when it's done!"
+            "(●'◡'●) I'm UpScaling your image. I'll send the upscaled image here when it's done!"
         )
 
 async def setup(bot):
