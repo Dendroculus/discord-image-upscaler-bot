@@ -52,6 +52,13 @@ class UpscaleCog(commands.Cog):
             return await interaction.response.send_message("❌ Image files only.", ephemeral=True)
 
         await interaction.response.defer(thinking=True)
+        
+        _ = await self.bot.db.add_job(
+            user_id=interaction.user.id,
+            channel_id=interaction.channel_id,
+            image_url=image.url,
+            model_type=type.value
+        )
 
         await interaction.followup.send(
             "(●'◡'●) I'm UpScaling your image. I'll send the upscaled image here when it's done!"

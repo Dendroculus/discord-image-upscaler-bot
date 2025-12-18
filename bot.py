@@ -44,11 +44,11 @@ class UpscaleBot(commands.AutoShardedBot):
 
     def __init__(self):
         intents = discord.Intents.default()
-        super().__init__(command_prefix=None, intents=intents)
+        super().__init__(command_prefix="!", intents=intents)
+        """ "!" is a placeholder prefix to satisfy discord.py requirements so it won't raise error  """
         self.db = Database()
         self.initial_extensions = [
             "cogs.UpScale",
-            "cogs.Deliverer",
         ]
 
     async def setup_hook(self):

@@ -7,6 +7,7 @@ import torch
 import gc
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
+from typing import Optional
 
 """
 ImageProcessing.py
@@ -100,8 +101,8 @@ class AIUpscaler:
             self._load_engine(model_type)
         return self._engines[model_type]
 
-    def run_upscale(self, image_url: str, job_id: int, model_type: str = "general") -> str | None:
-         # personal NOTE: str | none is same as Optional[str]
+    def run_upscale(self, image_url: str, job_id: int, model_type: str = "general") -> Optional[str]:
+         # personal NOTE: str | none is same as Optional[str] and also NOTE that str | none requires python 3.10+ otherwise it will raise TypeError
         """
         Download an image, run upscaling, save the file, and return its path.
 
