@@ -1,8 +1,10 @@
+import os
 from utils.PatchFix import patch_torchvision
 import asyncio
 from typing import Optional, Dict, Any
 from database import Database
 from utils.ImageProcessing import process_image
+from utils.Deliverer import deliver_result
 
 patch_torchvision()
 
@@ -83,17 +85,10 @@ class Worker:
         return await self.db.claim_next_queued_job()
 
     async def _process_job(self, job: Dict[str, Any]):
-        """
-        Execute the AI upscaling pipeline for a single job and update status.
-
-        Steps:
-        1. Log job start.
-        2. Run process_image in a thread to avoid blocking.
-        3. If an output path is returned, mark the job completed.
-        4. If processing fails or returns no output, mark the job failed.
-        """
         job_id = job["job_id"]
         print(f"🔄 Processing job #{job_id} ({job['model_type']}) ...")
+        
+        output_path = None 
         try:
             output_path = await asyncio.to_thread(
                 process_image,
@@ -103,13 +98,33 @@ class Worker:
             )
 
             if output_path:
-                await self.db.mark_completed(job_id, output_path)
-                print(f"Job #{job_id} completed -> {output_path}")
+                success = await deliver_result(
+                    channel_id=job["channel_id"],
+                    file_path=output_path,
+                    user_id=job["user_id"],
+                    model_type=job["model_type"]
+                )
+                
+                if success:
+                    await self.db.mark_completed(job_id, "Uploaded to Discord")
+                    await self.db.mark_job_sent(job_id)
+                    print(f"✅ Job #{job_id} completed and delivered.")
+                else:
+                    raise RuntimeError("Discord upload failed.")
             else:
                 raise RuntimeError("AI engine returned no output.")
+
         except Exception as e:
             await self.db.mark_failed(job_id, str(e))
             print(f"❌ Job #{job_id} failed: {e}")
+
+        finally:
+            if output_path and os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                    print(f"🗑️ Cleaned up temp file: {output_path}")
+                except Exception as cleanup_err:
+                    print(f"⚠️ Cleanup error: {cleanup_err}")
 
 
 async def main():
