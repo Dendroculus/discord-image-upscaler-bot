@@ -28,7 +28,7 @@ Logic flow:
 This module is intended to be executed as the main process for the bot.
 """
 
-class UpscaleBot(commands.Bot):
+class UpscaleBot(commands.AutoShardedBot):
     """
     Main bot class.
 
