@@ -3,6 +3,7 @@
   <img src="https://img.shields.io/badge/discord.py-v2.x-7289DA.svg?logo=discord&logoColor=white" alt="discord.py">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT">
   <img src="https://img.shields.io/badge/status-Active-green.svg" alt="Update Status">
+  <img src="https://img.shields.io/badge/Azure%20Blob%20Storage-Storage-0078D4.svg?logo=microsoftazure&logoColor=white" alt="Azure Blob Storage">
 </p>
 
 <div align="center">

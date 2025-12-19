@@ -9,7 +9,7 @@ async def deliver_result(channel_id: int, image_data: bytes, user_id: int, model
     """
     connection_string = os.getenv("AZURE_CONNECTION_STRING")
     discord_token = os.getenv("DISCORD_TOKEN")
-    container_name = "images"
+    container_name = "images" # NOTE :  This container must exist in Azure Blob Storage
     
     if not connection_string:
         print("❌ Error: AZURE_CONNECTION_STRING is missing in .env")
@@ -35,12 +35,9 @@ async def deliver_result(channel_id: int, image_data: bytes, user_id: int, model
         print(f"Upload success! Sending link to Discord: {file_url}")
         
         payload = {
-            "content": f"Done <@{user_id}>! Mode: {model_type}",
+            "content": f"(●'◡'●) here's your UpScaled image <@{user_id}>! \nMode: `{model_type.capitalize()}`",
             "embeds": [{
-                "title": "Upscaled Result",
                 "image": {"url": file_url},
-                "color": 5763719,  # Green color
-                "footer": {"text": "Hosted on Azure • Auto-deletes in 24h"}
             }]
         }
 
