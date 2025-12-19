@@ -1,45 +1,56 @@
 import os
 import aiohttp
-import aiofiles
-import aiofiles.os
+import uuid
+from azure.storage.blob.aio import BlobServiceClient
 
-async def deliver_result(channel_id: int, file_path: str, user_id: int, model_type: str) -> bool:
+async def deliver_result(channel_id: int, image_data: bytes, user_id: int, model_type: str) -> bool:
     """
-    Utility function to upload a file directly to a Discord channel.
-    Uses streaming to handle large AI-generated images without high RAM usage.
+    Uploads raw image bytes to Azure Blob Storage and sends the link to Discord.
     """
-    token = os.getenv("DISCORD_TOKEN")
-    url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
-    headers = {"Authorization": f"Bot {token}"}
+    connection_string = os.getenv("AZURE_CONNECTION_STRING")
+    discord_token = os.getenv("DISCORD_TOKEN")
+    container_name = "images"
+    
+    if not connection_string:
+        print("❌ Error: AZURE_CONNECTION_STRING is missing in .env")
+        return False
 
-    async def file_sender(path):
-        async with aiofiles.open(path, 'rb') as f:
-            while chunk := await f.read(64 * 1024):
-                yield chunk
+    filename = f"upscaled_{uuid.uuid4().hex[:8]}.png"
+    
+    discord_api_url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
+    headers = {"Authorization": f"Bot {discord_token}"}
 
     try:
-        stat = await aiofiles.os.stat(file_path)
-        file_size = stat.st_size
+        file_size_mb = len(image_data) / (1024 * 1024)
+        print(f"☁️ Uploading {filename} ({file_size_mb:.2f} MB) to Azure...")
         
-        if file_size > 10 * 1024 * 1024: # 10 MB Limit
-            print(f"❌ File too large ({file_size / (1024*1024):.2f}MB). Please make sure it is under 10MB.")
-            return False
+        async with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+            container_client = blob_service_client.get_container_client(container_name)
+            
+            blob_client = container_client.get_blob_client(filename)
+            
+            await blob_client.upload_blob(image_data, overwrite=True)
+            file_url = blob_client.url
+
+        print(f"Upload success! Sending link to Discord: {file_url}")
+        
+        payload = {
+            "content": f"Done <@{user_id}>! Mode: {model_type}",
+            "embeds": [{
+                "title": "Upscaled Result",
+                "image": {"url": file_url},
+                "color": 5763719,  # Green color
+                "footer": {"text": "Hosted on Azure • Auto-deletes in 24h"}
+            }]
+        }
 
         async with aiohttp.ClientSession() as session:
-            data = aiohttp.FormData()
-            data.add_field('payload_json', f'{{"content": "Done <@{user_id}>! Mode: {model_type}"}}')
-            
-            data.add_field(
-                'file', 
-                file_sender(file_path), 
-                filename=os.path.basename(file_path)
-            )
-
-            async with session.post(url, headers=headers, data=data) as resp:
+            async with session.post(discord_api_url, headers=headers, json=payload) as resp:
                 if resp.status != 200:
-                    err_msg = await resp.text()
-                    print(f"⚠️ Discord Upload Error: {resp.status} - {err_msg}")
-                return resp.status == 200
+                    error_text = await resp.text()
+                    print(f"⚠️ Discord Message Error: {error_text}")
+                    return False
+                return True
 
     except Exception as e:
         print(f"❌ Delivery Error: {e}")

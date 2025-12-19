@@ -69,3 +69,4 @@ yapf
 yarl
 zipp
 aiofiles
+azure-storage-blob
