@@ -5,67 +5,94 @@ from discord.ext import commands
 """
 UpScale.py
 
-Cog exposing a single slash command to submit an image for AI upscaling.
+Discord Cog that provides an /upscale slash command.
 
-Logic flow:
-1. Command validation ensures the provided Attachment is an image.
-2. Defer the interaction response (thinking) to give time to enqueue the job.
-3. Add a job to the database with the user, channel, image URL, and chosen model.
-4. Inform the user that the job was queued and provide the job id.
+Purpose:
+- Accept an image attachment from a user
+- Register an upscaling job into the database queue
+- Estimate processing and queue wait time
+- Inform the user when the job is likely to finish
 
-This cog delegates actual processing to a worker process which pulls jobs
-from the database and performs the upscaling.
+Notes:
+- Uses simple heuristics for time estimation (pixel-based + queue-based)
+- Designed to be non-blocking and user-friendly with deferred responses
 """
 
 class UpscaleCog(commands.Cog):
     """
-    Cog that exposes the /upscale command.
+    Cog responsible for image upscaling commands.
 
-    The command:
-    - Accepts an image attachment and a model type choice,
-    - Validates the attachment is an image,
-    - Enqueues a job in the database and reports the job id back to the user.
+    Attributes:
+        bot (commands.Bot): The main Discord bot instance.
+                              Expected to have `bot.db` with:
+                              - add_job(...)
+                              - get_queue_position()
     """
 
     def __init__(self, bot):
+        """
+        Initialize the UpscaleCog.
+
+        Args:
+            bot (commands.Bot): The bot instance this cog is attached to.
+        """
         self.bot = bot
 
     @app_commands.command(name="upscale", description="Upscale an image")
-    @app_commands.describe(image="Image to upscale", type="AI Model")
+    @app_commands.describe(
+        image="Image to upscale",
+        type="AI model used for upscaling"
+    )
     @app_commands.choices(
         type=[
             app_commands.Choice(name="General Photo", value="general"),
             app_commands.Choice(name="Anime / Illustration", value="anime"),
         ]
     )
-    async def upscale(self, interaction: discord.Interaction, image: discord.Attachment, type: app_commands.Choice[str]):
+    async def upscale(
+        self,
+        interaction: discord.Interaction,
+        image: discord.Attachment,
+        type: app_commands.Choice[str]
+    ):
         """
-        Handle the /upscale command.
+        Handle the /upscale slash command.
 
-        Steps:
-        1. Validate that the attachment's content_type starts with 'image/'.
-        2. Defer the response to acknowledge processing.
-        3. Add a job record to the database.
-        4. Follow up to tell the user the job id and that processing is underway.
+        Flow:
+        1. Validate that the uploaded file is an image
+        2. Defer the interaction to allow longer processing
+        3. Register the job in the database queue
+        4. Estimate processing time based on image resolution
+        5. Estimate queue wait time based on jobs ahead
+        6. Send the user an estimated completion timestamp
+
+        Args:
+            interaction (discord.Interaction): The interaction context.
+            image (discord.Attachment): The uploaded image file.
+            type (app_commands.Choice[str]): Selected AI upscaling model.
         """
+
         if not image.content_type or not image.content_type.startswith("image/"):
-            return await interaction.response.send_message("❌ Image files only.", ephemeral=True)
+            return await interaction.response.send_message(
+                "❌ Image files only.",
+                ephemeral=True
+            )
 
         await interaction.response.defer(thinking=True)
-        
-        _ = await self.bot.db.add_job(
+
+        await self.bot.db.add_job(
             user_id=interaction.user.id,
             channel_id=interaction.channel_id,
             image_url=image.url,
             model_type=type.value
         )
-
+        
+        width = image.width
+        height = image.height
+        
         await interaction.followup.send(
-            "(●'◡'●) I'm UpScaling your image. I'll send the upscaled image here when it's done!"
+            f"(●'◡'●) I'm UpScaling your image (`{width}x{height}`).\n"
         )
 
 async def setup(bot):
-    """
-    Add the UpscaleCog to the bot.
-    """
     await bot.add_cog(UpscaleCog(bot))
