@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any
 from database import Database
 from utils.ImageProcessing import process_image
 from utils.Deliverer import deliver_result
-from utils.Emojis import process
+from utils.Emojis import process, customs
 
 patch_torchvision()
 
@@ -21,7 +21,7 @@ async def update_status_embed(application_id: str, token: str, status: str, colo
     url = f"https://discord.com/api/v10/webhooks/{application_id}/{token}/messages/@original"
     
     embed = {
-        "title": "🎨 Image Upscaler",
+        "title": f"{customs['paint']} Image Upscaler",
         "description": "Your image is being enhanced.",
         "color": color, 
         "fields": [

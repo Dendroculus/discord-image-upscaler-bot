@@ -4,3 +4,6 @@ process = {
     "uploading" : "<:uploading:1451915664938893508>"
 }
 
+customs = {
+    "paint" : "<:paint:1451921556682051750>"
+}

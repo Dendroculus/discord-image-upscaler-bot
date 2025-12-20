@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from utils.Emojis import process
+from utils.Emojis import process, customs
 
 """
 UpScale.py
@@ -94,7 +94,7 @@ class UpscaleCog(commands.Cog):
         height = image.height
         
         embed = discord.Embed(
-            title="🎨 Image Upscaler",
+            title=f"{customs['paint']} Image Upscaler",
             description="Request received! Adding to queue...",
             color=discord.Color.orange() 
         )
