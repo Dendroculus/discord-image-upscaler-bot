@@ -9,6 +9,22 @@ from realesrgan import RealESRGANer
 from typing import Optional
 
 class AIUpscaler:
+    """
+    Wrapper around RealESRGAN that downloads images and performs upscaling.
+
+    This class manages model paths, device selection, engine caching, and
+    the upscaling pipeline. It exposes a `run_upscale` method which downloads
+    an image from a URL, runs the selected RealESRGAN model, and returns the
+    result as PNG-encoded bytes.
+
+    Attributes:
+        model_path_general (str): Path to the general RealESRGAN model file.
+        model_path_anime (str): Path to the anime RealESRGAN model file.
+        device (torch.device): Torch device used for inference ('cuda' or 'cpu').
+        use_half (bool): Whether to use half precision (fp16) on CUDA.
+        _engines (dict): Cached RealESRGANer instances keyed by model type.
+    """
+
     def __init__(self):
         self.model_path_general = os.path.join("models", "RealESRGAN_x4plus.pth")
         self.model_path_anime = os.path.join("models", "RealESRGAN_x4plus_anime_6B.pth")
@@ -48,6 +64,17 @@ class AIUpscaler:
         return self._engines[model_type]
 
     def run_upscale(self, image_url: str, job_id: int, model_type: str = "general") -> Optional[bytes]:
+        """
+        Download an image from `image_url`, upscale it using RealESRGAN, and return PNG bytes.
+
+        Args:
+            image_url (str): URL of the image to download and upscale.
+            job_id (int): Identifier used for logging/debugging.
+            model_type (str): Which model to use; 'general' or 'anime'. Defaults to 'general'.
+
+        Returns:
+            Optional[bytes]: PNG-encoded bytes of the upscaled image on success, or None on failure.
+        """
         try:
             print(f"📥 Job #{job_id} - Downloading image...")
             resp = requests.get(image_url, stream=True)
@@ -85,4 +112,15 @@ class AIUpscaler:
 engine = AIUpscaler()
 
 def process_image(url: str, job_id: int, model_type: str) -> Optional[bytes]:
+    """
+    Convenience wrapper that uses the module-level AIUpscaler to process an image URL.
+
+    Args:
+        url (str): URL of the image to upscale.
+        job_id (int): Job identifier for logging.
+        model_type (str): Model type to use ('general' or 'anime').
+
+    Returns:
+        Optional[bytes]: PNG-encoded bytes of the upscaled image, or None on error.
+    """
     return engine.run_upscale(url, job_id, model_type)
