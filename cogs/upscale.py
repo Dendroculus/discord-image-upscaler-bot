@@ -1,32 +1,14 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+import datetime
 
 """
 UpScale.py
-
-Cog exposing a single slash command to submit an image for AI upscaling.
-
-Logic flow:
-1. Command validation ensures the provided Attachment is an image.
-2. Defer the interaction response (thinking) to give time to enqueue the job.
-3. Add a job to the database with the user, channel, image URL, and chosen model.
-4. Inform the user that the job was queued and provide the job id.
-
-This cog delegates actual processing to a worker process which pulls jobs
-from the database and performs the upscaling.
+Cog for image upscaling with Smart Time Estimation.
 """
 
 class UpscaleCog(commands.Cog):
-    """
-    Cog that exposes the /upscale command.
-
-    The command:
-    - Accepts an image attachment and a model type choice,
-    - Validates the attachment is an image,
-    - Enqueues a job in the database and reports the job id back to the user.
-    """
-
     def __init__(self, bot):
         self.bot = bot
 
@@ -39,15 +21,6 @@ class UpscaleCog(commands.Cog):
         ]
     )
     async def upscale(self, interaction: discord.Interaction, image: discord.Attachment, type: app_commands.Choice[str]):
-        """
-        Handle the /upscale command.
-
-        Steps:
-        1. Validate that the attachment's content_type starts with 'image/'.
-        2. Defer the response to acknowledge processing.
-        3. Add a job record to the database.
-        4. Follow up to tell the user the job id and that processing is underway.
-        """
         if not image.content_type or not image.content_type.startswith("image/"):
             return await interaction.response.send_message("❌ Image files only.", ephemeral=True)
 
@@ -60,12 +33,32 @@ class UpscaleCog(commands.Cog):
             model_type=type.value
         )
 
+        
+        width = image.width or 1920
+        height = image.height or 1080
+        total_pixels = width * height
+        
+        overhead_seconds = 10.0       
+        seconds_per_million_px = 20.0 
+        
+        my_processing_time = overhead_seconds + ((total_pixels / 1_000_000) * seconds_per_million_px)
+
+        queue_count = await self.bot.db.get_queue_position()
+        
+        jobs_ahead = max(0, queue_count - 1)
+        
+        wait_time_from_queue = jobs_ahead * 45
+        
+        total_wait_seconds = wait_time_from_queue + my_processing_time
+        
+        future_time = datetime.datetime.now() + datetime.timedelta(seconds=total_wait_seconds)
+        timestamp = int(future_time.timestamp())
+
         await interaction.followup.send(
-            "(●'◡'●) I'm UpScaling your image. I'll send the upscaled image here when it's done!"
+            f"(●'◡'●) I'm UpScaling your image (`{width}x{height}`).\n"
+            f"Jobs ahead: **{jobs_ahead}**\n"
+            f"Estimated completion: <t:{timestamp}:R>!"
         )
 
 async def setup(bot):
-    """
-    Add the UpscaleCog to the bot.
-    """
     await bot.add_cog(UpscaleCog(bot))
