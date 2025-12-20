@@ -74,7 +74,29 @@ The only user-facing command is `/upscale` which accepts an `image` attachment a
 
 ## 🧩 Development & structure
 
-Core files: `bot.py` for Discord integration and delivery, `worker.py` for the processing loop, `database.py` for asyncpg-backed persistence, `utils/ImageProcessing.py` for Real-ESRGAN integration, `utils/AutoDelete.py` for delivery and cleanup, and `utils/PatchFix.py` for small compatibility shims. The worker offloads CPU/GPU work via `asyncio.to_thread` so the rest of the application remains responsive.
+Core files:
+- `bot.py`: Discord integration, command handling, and database interaction.
+- `worker.py`: The main processing loop that polls the database, runs the AI engine, and manages Azure uploads.
+- `database.py`: Asyncpg-backed persistence for job queues.
+- `cogs/UpScale.py`: Discord slash command definition and handling.
+- `loggers/BotLogger.py`: Centralized logging configuration using `rich` for beautiful console output and `TimedRotatingFileHandler` for daily log files.
+- `utils/ImageProcessing.py`: Real-ESRGAN integration for image upscaling.
+- `utils/Deliverer.py`: Handles uploading processed results to Azure Blob Storage and sending links back to Discord.
+- `utils/PatchFix.py`: Compatibility shims for torchvision.
+
+### 📂 Project Structure
+```text
+Discord-Image-Upscaler-Bot/
+├── cogs/               # Discord command modules
+├── loggers/            # Logging configuration (BotLogger.py)
+├── logs/               # Auto-generated log files
+│   ├── bot_logs/       # Discord bot logs (rotated daily)
+│   └── worker_logs/    # AI worker logs (rotated daily)
+├── models/             # Place .pth model files here
+├── utils/              # Helper scripts (Deliverer, ImageProcessing)
+├── bot.py              # Main Bot entry point
+├── worker.py           # Background AI worker
+└── start_upscaler.bat  # Launcher script
 
 ## 🛠 Built With
 

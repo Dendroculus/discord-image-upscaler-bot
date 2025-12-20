@@ -49,6 +49,7 @@ pyparsing
 python-dateutil
 python-dotenv
 PyYAML
+PyNaCl
 realesrgan
 requests
 scikit-image
@@ -70,3 +71,5 @@ yarl
 zipp
 aiofiles
 azure-storage-blob
+logging
+rich

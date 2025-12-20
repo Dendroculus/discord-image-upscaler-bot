@@ -1,8 +1,15 @@
+import os
 import discord
 from discord.ext import commands
 from database import Database
 from utils.PatchFix import patch_torchvision
 from constants.configs import DISCORD_TOKEN
+from loggers.BotLogger import init_logging
+
+init_logging(
+    log_dir=os.path.join("logs", "bot_logs"), 
+    log_file="discord.log"
+)
 
 patch_torchvision()
 
