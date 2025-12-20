@@ -1,6 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+from utils.Emojis import process
 
 """
 UpScale.py
@@ -84,15 +85,25 @@ class UpscaleCog(commands.Cog):
             user_id=interaction.user.id,
             channel_id=interaction.channel_id,
             image_url=image.url,
-            model_type=type.value
+            model_type=type.value,
+            token=interaction.token,
+            application_id=str(interaction.application_id)
         )
         
         width = image.width
         height = image.height
         
-        await interaction.followup.send(
-            f"(●'◡'●) I'm UpScaling your image (`{width}x{height}`).\n"
+        embed = discord.Embed(
+            title="🎨 Image Upscaler",
+            description="Request received! Adding to queue...",
+            color=discord.Color.orange() 
         )
+        embed.add_field(name="Status", value=f"{process['queuing']} **Queued**", inline=True)
+        embed.add_field(name="Model", value=f"`{type.value.capitalize()}`", inline=True)
+        embed.add_field(name="Size", value=f"`{width}x{height}`", inline=True)
+        embed.set_footer(text="Please wait...")
+
+        await interaction.followup.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(UpscaleCog(bot))

@@ -49,7 +49,7 @@ class Database:
         Initialize and migrate the database schema.
 
         - Creates the `upscale_jobs` table if it does not exist
-        - Ensures `channel_id` column exists and is NOT NULL
+        - Ensures `channel_id`, `token`, and `application_id` columns exist
         - Backfills existing NULL `channel_id` values with 0
         """
         async with self.pool.acquire() as conn:
@@ -61,6 +61,8 @@ class Database:
                     channel_id BIGINT NOT NULL,
                     image_url TEXT NOT NULL,
                     model_type TEXT NOT NULL,
+                    token TEXT,
+                    application_id TEXT,
                     status TEXT DEFAULT 'queued',
                     output_path TEXT,
                     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -72,6 +74,13 @@ class Database:
             await conn.execute(
                 "ALTER TABLE upscale_jobs ADD COLUMN IF NOT EXISTS channel_id BIGINT;"
             )
+            await conn.execute(
+                "ALTER TABLE upscale_jobs ADD COLUMN IF NOT EXISTS token TEXT;"
+            )
+            await conn.execute(
+                "ALTER TABLE upscale_jobs ADD COLUMN IF NOT EXISTS application_id TEXT;"
+            )
+            
             await conn.execute(
                 "UPDATE upscale_jobs SET channel_id = 0 WHERE channel_id IS NULL;"
             )
@@ -85,6 +94,8 @@ class Database:
         channel_id: int,
         image_url: str,
         model_type: str,
+        token: str,
+        application_id: str
     ) -> int:
         """
         Insert a new upscale job into the queue.
@@ -94,6 +105,8 @@ class Database:
             channel_id (int): Channel where the job originated
             image_url (str): Source image URL
             model_type (str): Upscaling model identifier
+            token (str): Interaction token for updating the message
+            application_id (str): Bot application ID
 
         Returns:
             int: Newly created job_id
@@ -101,14 +114,16 @@ class Database:
         async with self.pool.acquire() as conn:
             return await conn.fetchval(
                 """
-                INSERT INTO upscale_jobs (user_id, channel_id, image_url, model_type)
-                VALUES ($1, $2, $3, $4)
+                INSERT INTO upscale_jobs (user_id, channel_id, image_url, model_type, token, application_id)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 RETURNING job_id
                 """,
                 user_id,
                 channel_id,
                 image_url,
                 model_type,
+                token,
+                application_id
             )
 
     async def claim_next_queued_job(self) -> Optional[Dict[str, Any]]:
@@ -127,7 +142,7 @@ class Database:
             async with conn.transaction():
                 row = await conn.fetchrow(
                     """
-                    SELECT job_id, user_id, channel_id, image_url, model_type
+                    SELECT job_id, user_id, channel_id, image_url, model_type, token, application_id
                     FROM upscale_jobs
                     WHERE status = 'queued'
                     ORDER BY created_at ASC

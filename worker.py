@@ -1,9 +1,11 @@
 from utils.PatchFix import patch_torchvision
 import asyncio
+import aiohttp
 from typing import Optional, Dict, Any
 from database import Database
 from utils.ImageProcessing import process_image
 from utils.Deliverer import deliver_result
+from utils.Emojis import process
 
 patch_torchvision()
 
@@ -11,6 +13,39 @@ patch_torchvision()
 worker.py
 Background worker that polls for jobs, processes them in memory, and uploads to Azure.
 """
+
+async def update_status_embed(application_id: str, token: str, status: str, color: int):
+    """
+    Updates the existing Embed with a new status and color.
+    """
+    url = f"https://discord.com/api/v10/webhooks/{application_id}/{token}/messages/@original"
+    
+    embed = {
+        "title": "🎨 Image Upscaler",
+        "description": "Your image is being enhanced.",
+        "color": color, 
+        "fields": [
+            {"name": "Status", "value": status, "inline": True},
+        ],
+        "footer": {"text": "This might take a moment..."}
+    }
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            await session.patch(url, json={"embeds": [embed]})
+    except Exception as e:
+        print(f"Failed to update status embed: {e}")
+
+async def delete_progress_message(application_id: str, token: str):
+    """
+    Deletes the progress message to clean up the chat.
+    """
+    url = f"https://discord.com/api/v10/webhooks/{application_id}/{token}/messages/@original"
+    try:
+        async with aiohttp.ClientSession() as session:
+            await session.delete(url)
+    except Exception as e:
+        print(f"Failed to delete progress message: {e}")
 
 class Worker:
     def __init__(self, poll_interval: float = 2.0):
@@ -36,6 +71,17 @@ class Worker:
 
     async def _process_job(self, job: Dict[str, Any]):
         job_id = job["job_id"]
+        
+
+        if job.get("token") and job.get("application_id"):
+            # Update to BLUE: Processing
+            await update_status_embed(
+                job["application_id"], 
+                job["token"], 
+                f"{process['processing']} **Processing...**", 
+                5763719
+            )
+
         print(f"🔄 Processing job #{job_id} ({job['model_type']}) ...")
         
         try:
@@ -47,6 +93,14 @@ class Worker:
             )
 
             if image_data:
+                if job.get("token") and job.get("application_id"):
+                    await update_status_embed(
+                        job["application_id"], 
+                        job["token"], 
+                        f"{process['uploading']} **Uploading...**", 
+                        5793266
+                    )
+
                 success = await deliver_result(
                     channel_id=job["channel_id"],
                     image_data=image_data, 
@@ -57,6 +111,11 @@ class Worker:
                 if success:
                     await self.db.mark_completed(job_id, "Uploaded to Azure")
                     await self.db.mark_job_sent(job_id)
+
+                    # --- CLEANUP: DELETE THE PROGRESS BAR ---
+                    if job.get("token") and job.get("application_id"):
+                         await delete_progress_message(job["application_id"], job["token"])
+
                     print(f"Job #{job_id} completed and delivered.")
                 else:
                     raise RuntimeError("Discord delivery failed.")

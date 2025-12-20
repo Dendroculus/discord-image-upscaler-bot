@@ -35,7 +35,7 @@ async def deliver_result(channel_id: int, image_data: bytes, user_id: int, model
         print(f"Upload success! Sending link to Discord: {file_url}")
         
         payload = {
-            "content": f"(●'◡'●) here's your UpScaled image <@{user_id}>! \nMode: `{model_type.capitalize()}`",
+            "content": f"(●'◡'●) here's your UpScaled image <@{user_id}>! Mode: `{model_type.capitalize()}`",
             "embeds": [{
                 "image": {"url": file_url},
             }]
