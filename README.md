@@ -63,6 +63,7 @@ The code expects two model files by default: `RealESRGAN_x4plus.pth` for general
 
 Start the worker with `python worker.py` to begin polling for queued jobs and performing upscales. Start the bot with `python bot.py` to register the `/upscale` slash command and run the delivery loop. Use `/upscale` in a server where the bot is invited; upload an image attachment and choose the model type. The command will confirm a queued job ID and the worker will process the image and save the output into `output/`; the bot will then post the upscaled image into the originating channel and remove the local file.
 
+Or if you want to quit that hassle, you can use the batch files provided in the repository root : [Batch File Link ](https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/start_upscaler.bat)
 ## ☁️ Deployment tips
 
 Run the bot and worker as separate services so heavy processing does not block command handling. For small deployments, a Docker Compose setup with two services and a shared `models/` and `output/` volume is convenient. For production, consider separate systemd units, Docker containers orchestrated by a process manager, or Kubernetes Deployments with GPU node selection. A managed PostgreSQL instance reduces operational overhead. Monitor disk usage and prune old entries/output files if you expect high throughput.
