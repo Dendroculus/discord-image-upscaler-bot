@@ -20,7 +20,12 @@ class Database:
     """
 
     def __init__(self, dsn: str = DB_DSN):
+        """
+        Initialize the Database instance.
 
+        Args:
+            dsn (str): PostgreSQL DSN connection string.
+        """
         self.dsn = dsn
         self.pool: Optional[asyncpg.Pool] = None
 
@@ -202,10 +207,16 @@ class Database:
         """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT * FROM upscale_jobs WHERE status = 'completed'"
+                """
+                SELECT 
+                    job_id, user_id, channel_id, image_url, 
+                    model_type, status, output_path, created_at
+                FROM upscale_jobs 
+                WHERE status = 'completed'
+                """
             )
             return [dict(r) for r in rows]
-
+        
     async def mark_job_sent(self, job_id: int):
         """
         Mark a completed job as sent to the user.
