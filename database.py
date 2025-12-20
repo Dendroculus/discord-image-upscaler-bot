@@ -3,6 +3,28 @@ import asyncpg
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 
+"""
+database.py
+
+Async PostgreSQL helper for managing an image upscale job queue.
+
+This module provides a Database class that wraps an asyncpg connection pool
+and exposes high-level methods to create the schema, add jobs, claim the
+next queued job (with row-level locking), update job states, and query jobs.
+
+Environment:
+- Expects a PostgreSQL connection string in the environment variable
+  POSTGRE_CONN_STRING (loaded via python-dotenv when present).
+
+Usage:
+    db = Database()
+    await db.connect()
+    await db.init_schema()
+    job_id = await db.add_job(...)
+    next_job = await db.claim_next_queued_job()
+    await db.close()
+"""
+
 load_dotenv()
 
 DB_DSN = os.getenv("POSTGRE_CONN_STRING")
@@ -10,47 +32,58 @@ DB_DSN = os.getenv("POSTGRE_CONN_STRING")
 
 class Database:
     """
-    Async PostgreSQL database handler for managing upscale job queues.
+    Asynchronous PostgreSQL database handler for an upscale job queue.
 
-    Responsibilities:
-    - Manage connection pooling with asyncpg
-    - Initialize and migrate database schema
-    - Handle job lifecycle (queued → processing → completed / failed / sent)
-    - Provide atomic job-claiming for concurrent workers
+    This class manages an asyncpg connection pool and provides transactional
+    operations suitable for a producer/consumer workflow where jobs are
+    enqueued, claimed for processing with FOR UPDATE SKIP LOCKED semantics,
+    and then marked as processing, completed, sent, or failed.
+
+    Args:
+        dsn: PostgreSQL DSN / connection string. If not provided, the module-level
+             environment variable POSTGRE_CONN_STRING is used.
+
+    Attributes:
+        dsn: The database connection string.
+        pool: An asyncpg.Pool instance once connect() has been called.
     """
 
     def __init__(self, dsn: str = DB_DSN):
-        """
-        Initialize the Database instance.
-
-        Args:
-            dsn (str): PostgreSQL DSN connection string.
-        """
         self.dsn = dsn
         self.pool: Optional[asyncpg.Pool] = None
 
     async def connect(self):
         """
-        Create an asyncpg connection pool.
+        Establish an asyncpg connection pool.
 
-        Must be called before any database operation.
+        This must be called before performing any database operations. The pool
+        is stored on the instance and reused for subsequent calls.
+
+        Raises:
+            asyncpg.PostgresError: If the connection or pool creation fails.
         """
         self.pool = await asyncpg.create_pool(self.dsn)
 
     async def close(self):
         """
-        Close the database connection pool gracefully.
+        Close the connection pool gracefully.
+
+        This should be awaited during application shutdown to ensure all
+        connections are released back to the server.
         """
         if self.pool:
             await self.pool.close()
 
     async def init_schema(self):
         """
-        Initialize and migrate the database schema.
+        Create the `upscale_jobs` table if it does not exist.
 
-        - Creates the `upscale_jobs` table if it does not exist
-        - Ensures `channel_id`, `token`, and `application_id` columns exist
-        - Backfills existing NULL `channel_id` values with 0
+        The table schema contains columns to track job lifecycle, identify the
+        submitting user and channel, store the source image URL, selected model,
+        and where the processed output is saved.
+
+        Raises:
+            asyncpg.PostgresError: If the DDL statement fails.
         """
         async with self.pool.acquire() as conn:
             await conn.execute(
@@ -70,24 +103,6 @@ class Database:
                 """
             )
 
-            # Ensure schema consistency for older deployments
-            await conn.execute(
-                "ALTER TABLE upscale_jobs ADD COLUMN IF NOT EXISTS channel_id BIGINT;"
-            )
-            await conn.execute(
-                "ALTER TABLE upscale_jobs ADD COLUMN IF NOT EXISTS token TEXT;"
-            )
-            await conn.execute(
-                "ALTER TABLE upscale_jobs ADD COLUMN IF NOT EXISTS application_id TEXT;"
-            )
-            
-            await conn.execute(
-                "UPDATE upscale_jobs SET channel_id = 0 WHERE channel_id IS NULL;"
-            )
-            await conn.execute(
-                "ALTER TABLE upscale_jobs ALTER COLUMN channel_id SET NOT NULL;"
-            )
-
     async def add_job(
         self,
         user_id: int,
@@ -101,15 +116,18 @@ class Database:
         Insert a new upscale job into the queue.
 
         Args:
-            user_id (int): Discord user ID who requested the job
-            channel_id (int): Channel where the job originated
-            image_url (str): Source image URL
-            model_type (str): Upscaling model identifier
-            token (str): Interaction token for updating the message
-            application_id (str): Bot application ID
+            user_id: The ID of the user who requested the upscale.
+            channel_id: The channel ID associated with the request.
+            image_url: Source image URL to upscale.
+            model_type: Identifier of the model to use for upscaling.
+            token: Optional token associated with the request/provider.
+            application_id: Optional application identifier.
 
         Returns:
-            int: Newly created job_id
+            The generated job_id for the newly inserted job.
+
+        Raises:
+            asyncpg.PostgresError: If the insert fails.
         """
         async with self.pool.acquire() as conn:
             return await conn.fetchval(
@@ -128,15 +146,19 @@ class Database:
 
     async def claim_next_queued_job(self) -> Optional[Dict[str, Any]]:
         """
-        Atomically claim the oldest queued job for processing.
+        Atomically claim the next queued job for processing.
 
-        Uses row-level locking with SKIP LOCKED to allow safe concurrent
-        workers without double-processing jobs.
+        This method selects the oldest job with status 'queued' and updates its
+        status to 'processing' within the same transaction using
+        FOR UPDATE SKIP LOCKED to avoid contention between consumers.
 
         Returns:
-            Optional[Dict[str, Any]]:
-                A dictionary containing job fields required for processing,
-                or None if no queued job is available.
+            A dictionary representing the claimed job (including job_id,
+            user_id, channel_id, image_url, model_type, token, application_id)
+            or None if there are no queued jobs.
+
+        Raises:
+            asyncpg.PostgresError: If the select/update transaction fails.
         """
         async with self.pool.acquire() as conn:
             async with conn.transaction():
@@ -162,10 +184,13 @@ class Database:
 
     async def mark_processing(self, job_id: int):
         """
-        Mark a job as currently being processed.
+        Mark a job as being processed.
 
         Args:
-            job_id (int): Job identifier
+            job_id: The job identifier.
+
+        Raises:
+            asyncpg.PostgresError: If the update fails.
         """
         async with self.pool.acquire() as conn:
             await conn.execute(
@@ -175,11 +200,14 @@ class Database:
 
     async def mark_completed(self, job_id: int, output_path: str):
         """
-        Mark a job as completed and store its output path.
+        Mark a job as completed and record the output location.
 
         Args:
-            job_id (int): Job identifier
-            output_path (str): Path or identifier of the generated output
+            job_id: The job identifier.
+            output_path: Path or URL where the upscaled output is stored.
+
+        Raises:
+            asyncpg.PostgresError: If the update fails.
         """
         async with self.pool.acquire() as conn:
             await conn.execute(
@@ -194,13 +222,18 @@ class Database:
 
     async def mark_failed(self, job_id: int, reason: str):
         """
-        Mark a job as failed.
+        Mark a job as failed and record a failure reason in output_path.
 
-        The failure reason is stored in `output_path` for inspection/logging.
+        Note: This implementation stores the failure reason in the output_path
+        column to preserve a single text column. Adjust schema if you prefer a
+        dedicated failure_reason column.
 
         Args:
-            job_id (int): Job identifier
-            reason (str): Failure reason or error message
+            job_id: The job identifier.
+            reason: Human-readable reason or error message describing the failure.
+
+        Raises:
+            asyncpg.PostgresError: If the update fails.
         """
         async with self.pool.acquire() as conn:
             await conn.execute(
@@ -215,10 +248,14 @@ class Database:
 
     async def get_completed_jobs(self):
         """
-        Retrieve all completed jobs.
+        Fetch all jobs that have been marked as completed.
 
         Returns:
-            list[dict]: List of completed job records
+            A list of dictionaries with keys: job_id, user_id, channel_id,
+            image_url, model_type, status, output_path, created_at.
+
+        Raises:
+            asyncpg.PostgresError: If the select query fails.
         """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
@@ -234,10 +271,13 @@ class Database:
         
     async def mark_job_sent(self, job_id: int):
         """
-        Mark a completed job as sent to the user.
+        Mark a job as sent after delivering the completed output to the user.
 
         Args:
-            job_id (int): Job identifier
+            job_id: The job identifier.
+
+        Raises:
+            asyncpg.PostgresError: If the update fails.
         """
         async with self.pool.acquire() as conn:
             await conn.execute(
@@ -247,12 +287,16 @@ class Database:
 
     async def get_queue_position(self) -> int:
         """
-        Get the current number of jobs ahead in the queue.
+        Return the total number of jobs currently in the queue or processing.
 
-        Counts jobs that are either queued or currently processing.
+        This provides a simple view of current backlog size by counting jobs
+        whose status is 'queued' or 'processing'.
 
         Returns:
-            int: Number of active jobs in the queue
+            Integer count of jobs with status 'queued' or 'processing'.
+
+        Raises:
+            asyncpg.PostgresError: If the count query fails.
         """
         async with self.pool.acquire() as conn:
             return await conn.fetchval(

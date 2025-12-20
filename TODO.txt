@@ -1,0 +1,1 @@
+MOVE ALL getenv() into one file named Constants.py and import them from there
