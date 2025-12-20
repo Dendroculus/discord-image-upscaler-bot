@@ -7,7 +7,7 @@ import gc
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 from typing import Optional
-from utils.Emojis import process
+from constants.Emojis import process
 
 class AIUpscaler:
     """
