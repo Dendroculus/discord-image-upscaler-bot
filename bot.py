@@ -1,11 +1,9 @@
-import os
 import discord
 from discord.ext import commands
-from dotenv import load_dotenv
 from database import Database
 from utils.PatchFix import patch_torchvision
+from constants.configs import DISCORD_TOKEN
 
-load_dotenv()
 patch_torchvision()
 
 """
@@ -80,4 +78,4 @@ class UpscaleBot(commands.AutoShardedBot):
 
 if __name__ == "__main__":
     bot = UpscaleBot()
-    bot.run(os.getenv("DISCORD_TOKEN"))
+    bot.run(DISCORD_TOKEN)

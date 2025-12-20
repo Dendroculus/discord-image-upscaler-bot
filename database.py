@@ -1,7 +1,7 @@
-import os
 import asyncpg
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
+from constants.configs import DATABASE
 
 """
 database.py
@@ -27,7 +27,6 @@ Usage:
 
 load_dotenv()
 
-DB_DSN = os.getenv("POSTGRE_CONN_STRING")
 
 
 class Database:
@@ -48,7 +47,7 @@ class Database:
         pool: An asyncpg.Pool instance once connect() has been called.
     """
 
-    def __init__(self, dsn: str = DB_DSN):
+    def __init__(self, dsn: str = DATABASE):
         self.dsn = dsn
         self.pool: Optional[asyncpg.Pool] = None
 

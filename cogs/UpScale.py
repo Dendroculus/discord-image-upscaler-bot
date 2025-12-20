@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from utils.Emojis import process, customs
+from constants.Emojis import process, customs
 
 """
 UpScale.py

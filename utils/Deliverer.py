@@ -1,18 +1,18 @@
-import os
 import aiohttp
 import uuid
 from azure.storage.blob.aio import BlobServiceClient
+from constants.configs import DISCORD_TOKEN, AZURE_STORAGE_BLOB
 
 async def deliver_result(channel_id: int, image_data: bytes, user_id: int, model_type: str) -> bool:
     """
     Uploads raw image bytes to Azure Blob Storage and sends the link to Discord.
     """
-    connection_string = os.getenv("AZURE_CONNECTION_STRING")
-    discord_token = os.getenv("DISCORD_TOKEN")
+    connection_string = AZURE_STORAGE_BLOB
+    discord_token = DISCORD_TOKEN
     container_name = "images" # NOTE :  This container must exist in Azure Blob Storage
     
     if not connection_string:
-        print("❌ Error: AZURE_CONNECTION_STRING is missing in .env")
+        print("❌ Error: AZURE_STORAGE_BLOB connection string is missing in .env")
         return False
 
     filename = f"upscaled_{uuid.uuid4().hex[:8]}.png"
