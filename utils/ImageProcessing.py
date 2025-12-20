@@ -7,6 +7,7 @@ import gc
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 from typing import Optional
+from utils.Emojis import process
 
 class AIUpscaler:
     """
@@ -92,7 +93,7 @@ class AIUpscaler:
             upsampler = self._get_engine(model_type)
             upsampler.tile = tile_size
 
-            print(f"⚡ Job #{job_id} - Processing ({model_type})...")
+            print(f" {process['processing']} Job #{job_id} - Processing ({model_type})...")
             output_img, _ = upsampler.enhance(img, outscale=4)
 
             success, buffer = cv2.imencode(".png", output_img)
