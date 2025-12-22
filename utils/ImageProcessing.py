@@ -7,7 +7,7 @@ import gc
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 from typing import Optional
-from constants.configs import General_Path, Anime_Path
+from constants.configs import General_Path, Anime_Path, MAX_IMAGE_DIMENSION
 
 class AIUpscaler:
     """
@@ -60,20 +60,51 @@ class AIUpscaler:
         if model_type not in self._engines:
             self._load_engine(model_type)
         return self._engines[model_type]
+    
+    def _resize_image(self, img: np.ndarray, job_id: int, max_dim: int = MAX_IMAGE_DIMENSION) -> np.ndarray:
+        """
+        Helper function to resize image if it exceeds safe VRAM dimensions.
+        """
+        height, width = img.shape[:2]
+        max_side = max(height, width)
+
+        if max_side > max_dim:
+            scale_factor = max_dim / max_side
+            new_width = int(width * scale_factor)
+            new_height = int(height * scale_factor)
+            
+            print(f"⚠️ Job #{job_id} - Image too large ({width}x{height}). Resizing to {new_width}x{new_height} to save VRAM.")
+            img = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            
+        return img
 
     def run_upscale(self, image_url: str, job_id: int, model_type: str = "general") -> Optional[bytes]:
         """
-        Download an image from `image_url`, upscale it using RealESRGAN, and return PNG bytes.
+        Downloads an image from a URL, preprocesses it, upscales it using an AI model,
+        and returns the result as PNG bytes.
+
+        The method:
+        - Clears CUDA memory before and after execution when using GPU.
+        - Downloads and decodes the image from the provided URL.
+        - Resizes the image to a safe maximum dimension before upscaling.
+        - Dynamically enables tiling for larger images to reduce VRAM usage.
+        - Forces half-precision inference on the selected device for performance.
+        - Encodes the final upscaled image as PNG.
 
         Args:
-            image_url (str): URL of the image to download and upscale.
-            job_id (int): Identifier used for logging/debugging.
-            model_type (str): Which model to use; 'general' or 'anime'. Defaults to 'general'.
+            image_url (str): URL of the source image to upscale.
+            job_id (int): Job identifier used for logging.
+            model_type (str): Upscaling model to use (default: "general").
 
         Returns:
-            Optional[bytes]: PNG-encoded bytes of the upscaled image on success, or None on failure.
+            Optional[bytes]: PNG-encoded upscaled image bytes if successful,
+            otherwise None if an error occurs.
         """
         try:
+            if self.device.type == "cuda":
+                torch.cuda.empty_cache()
+                gc.collect()
+
             print(f"📥 Job #{job_id} - Downloading image...")
             resp = requests.get(image_url, stream=True)
             if resp.status_code != 200:
@@ -84,13 +115,19 @@ class AIUpscaler:
             if img is None:
                 raise ValueError("Could not decode image.")
 
+            img = self._resize_image(img, job_id, max_dim=1280)
             height, width = img.shape[:2]
-            tile_size = 256 if (height > 800 or width > 800) else 0
+
+            tile_size = 192 if (height > 600 or width > 600) else 0
 
             upsampler = self._get_engine(model_type)
             upsampler.tile = tile_size
 
-            print(f" ⚒️ Job #{job_id} - Processing ({model_type})...")
+            upsampler.model.to(self.device).half()
+            upsampler.device = self.device
+            upsampler.half = True
+
+            print(f" ⚒️ Job #{job_id} - Processing ({model_type}) [Tile: {tile_size}]...")
             output_img, _ = upsampler.enhance(img, outscale=4)
 
             success, buffer = cv2.imencode(".png", output_img)
@@ -106,6 +143,7 @@ class AIUpscaler:
         except Exception as e:
             print(f"❌ Critical Error in AI Engine (Job #{job_id}): {e}")
             return None
+
 
 engine = AIUpscaler()
 
