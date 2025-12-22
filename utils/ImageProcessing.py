@@ -7,7 +7,7 @@ import gc
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 from typing import Optional
-from constants.Emojis import process
+from constants.configs import General_Path, Anime_Path
 
 class AIUpscaler:
     """
@@ -27,9 +27,6 @@ class AIUpscaler:
     """
 
     def __init__(self):
-        self.model_path_general = os.path.join("models", "RealESRGAN_x4plus.pth")
-        self.model_path_anime = os.path.join("models", "RealESRGAN_x4plus_anime_6B.pth")
-        
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.use_half = True if self.device.type == "cuda" else False
         self._engines = {}
@@ -38,10 +35,10 @@ class AIUpscaler:
     def _load_engine(self, model_type: str) -> RealESRGANer:
         if model_type == "anime":
             model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4)
-            path = self.model_path_anime
+            path = Anime_Path
         else:
             model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
-            path = self.model_path_general
+            path = General_Path
 
         if not os.path.exists(path):
             raise FileNotFoundError(f"Model file missing: {path}")
@@ -93,7 +90,7 @@ class AIUpscaler:
             upsampler = self._get_engine(model_type)
             upsampler.tile = tile_size
 
-            print(f" {process['processing']} Job #{job_id} - Processing ({model_type})...")
+            print(f" ⚒️ Job #{job_id} - Processing ({model_type})...")
             output_img, _ = upsampler.enhance(img, outscale=4)
 
             success, buffer = cv2.imencode(".png", output_img)
