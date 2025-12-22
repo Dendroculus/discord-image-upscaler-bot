@@ -38,8 +38,18 @@ class UpscaleCog(commands.Cog):
             bot (commands.Bot): The bot instance this cog is attached to.
         """
         self.bot = bot
+        
+    @staticmethod
+    def add_embed_fields(embed: discord.Embed, fields: list[tuple[str, any, bool]]):
+        """
+        A helper function to add multiple fields to a discord.Embed.
+        fields: list of tuples (name,, value, inline)
+        """
+        for name, value, inline in fields:
+            embed.add_field(name=name, value=value, inline=inline)
 
     @app_commands.command(name="upscale", description="Upscale an image")
+    @commands.guild_only()
     @app_commands.describe(
         image="Image to upscale",
         type="AI model used for upscaling"
@@ -98,9 +108,12 @@ class UpscaleCog(commands.Cog):
             description="Request received! Adding to queue...",
             color=discord.Color.orange() 
         )
-        embed.add_field(name="Status", value=f"{process['queuing']} **Queued**", inline=True)
-        embed.add_field(name="Model", value=f"`{type.value.capitalize()}`", inline=True)
-        embed.add_field(name="Size", value=f"`{width}x{height}`", inline=True)
+        fields = [
+            ("Status", f"{process['queuing']} **Queued**", True),
+            ("Model", f"`{type.value.capitalize()}`", True),
+            ("Size", f"`{width}x{height}`", True)
+        ]
+        self.add_embed_fields(embed=embed, fields=fields)
         embed.set_footer(text="Please wait...")
 
         await interaction.followup.send(embed=embed)
