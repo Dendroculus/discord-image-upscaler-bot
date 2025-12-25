@@ -88,6 +88,12 @@ class UpscaleCog(commands.Cog):
                 "❌ Image files only.",
                 ephemeral=True
             )
+            
+        if await self.bot.db.has_active_job(interaction.user.id):
+            return await interaction.response.send_message(
+                "❌ You already have an active job in the queue. Please wait for it to complete before submitting a new one.",
+                ephemeral=True
+            )
 
         await interaction.response.defer(thinking=True)
 

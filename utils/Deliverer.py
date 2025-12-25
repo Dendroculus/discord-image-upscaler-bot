@@ -3,7 +3,7 @@ import uuid
 from azure.storage.blob.aio import BlobServiceClient
 from constants.configs import DISCORD_TOKEN, AZURE_STORAGE_BLOB
 
-async def deliver_result(channel_id: int, image_data: bytes, user_id: int, model_type: str) -> bool:
+async def deliver_result(session: aiohttp.ClientSession, channel_id: int, image_data: bytes, user_id: int, model_type: str) -> bool:
     """
     Uploads raw image bytes to Azure Blob Storage and sends the link to Discord.
     """
@@ -41,14 +41,13 @@ async def deliver_result(channel_id: int, image_data: bytes, user_id: int, model
             }]
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(discord_api_url, headers=headers, json=payload) as resp:
-                await resp.read() 
-                if resp.status != 200:
-                    error_text = await resp.text()
-                    print(f"⚠️ Discord Message Error: {error_text}")
-                    return False
-                return True
+        async with session.post(discord_api_url, headers=headers, json=payload) as resp:
+            await resp.read() 
+            if resp.status != 200:
+                error_text = await resp.text()
+                print(f"⚠️ Discord Message Error: {error_text}")
+                return False
+            return True
 
     except Exception as e:
         print(f"❌ Delivery Error: {e}")
