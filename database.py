@@ -1,7 +1,9 @@
+import asyncio
 import asyncpg
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 from constants.configs import DATABASE
+from contextlib import asynccontextmanager
 
 """
 database.py
@@ -75,16 +77,11 @@ class Database:
 
     async def init_schema(self):
         """
-        Create the `upscale_jobs` table if it does not exist.
-
-        The table schema contains columns to track job lifecycle, identify the
-        submitting user and channel, store the source image URL, selected model,
-        and where the processed output is saved.
-
-        Raises:
-            asyncpg.PostgresError: If the DDL statement fails.
+        Create the `upscale_jobs` table and necessary performance indexes 
+        if they do not exist.
         """
         async with self.pool.acquire() as conn:
+            # 1. Create the Table
             await conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS upscale_jobs (
@@ -101,6 +98,35 @@ class Database:
                 );
                 """
             )
+            
+            # 2. Create Indexes for Scalability (The new part)
+            # This makes finding "old jobs" instant, even with 1 million rows.
+            await conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_upscale_jobs_created_at 
+                ON upscale_jobs(created_at);
+                
+                CREATE INDEX IF NOT EXISTS idx_upscale_jobs_status 
+                ON upscale_jobs(status);
+                """
+            )
+            
+    @asynccontextmanager
+    async def get_connection_safe(self, retries=5, delay=2):
+        """
+        Yields a connection with retry logic for 'Recovery Mode' or network blips.
+        """
+        for i in range(retries):
+            try:
+                # The connection is acquired HERE, inside the try block
+                async with self.pool.acquire() as conn:
+                    yield conn
+                return # Exit the function after successful yield
+            except (asyncpg.CannotConnectNowError, OSError) as e:
+                if i == retries - 1:
+                    raise e  # Re-raise if we ran out of retries
+                print(f"⚠️ DB in recovery/unavailable. Retrying in {delay}s... ({i+1}/{retries})")
+                await asyncio.sleep(delay)
 
     async def add_job(
         self,
@@ -304,4 +330,50 @@ class Database:
                 FROM upscale_jobs
                 WHERE status IN ('queued', 'processing')
                 """
+            )
+            
+    async def recover_stale_jobs(self):
+        """
+        Resets jobs that have been stuck in 'processing' for too long.
+        This handles scenarios where a worker crashes mid-job.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE upscale_jobs
+                SET status = 'queued'
+                WHERE status = 'processing'
+                AND created_at < NOW() - INTERVAL '10 minutes'
+                """
+            )
+            
+    async def prune_old_jobs(self):
+        """
+        Deletes job logs older than 3 hours that have been successfully sent.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                DELETE FROM upscale_jobs
+                WHERE created_at < NOW() - INTERVAL '3 hours'
+                AND status = 'sent'
+                """
+            )
+            
+    async def has_active_job(self, user_id: int) -> bool:
+        """
+        Checks if the user already has a job in the queue or being processed.
+        Returns True if they do, False otherwise.
+        """
+        async with self.get_connection_safe() as conn:
+            return await conn.fetchval(
+                """
+                SELECT EXISTS(
+                    SELECT 1 
+                    FROM upscale_jobs 
+                    WHERE user_id = $1 
+                    AND status IN ('queued', 'processing')
+                )
+                """,
+                user_id
             )
