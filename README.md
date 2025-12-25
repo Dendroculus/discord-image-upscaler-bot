@@ -1,3 +1,8 @@
+<div align="center">
+
+  EN | [中文](./docs/readmeCN.md)
+</div>
+
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.9.4-blue.svg" alt="Python Version">
   <img src="https://img.shields.io/badge/discord.py-v2.x-7289DA.svg?logo=discord&logoColor=white" alt="discord.py">
@@ -72,32 +77,6 @@ Run the bot and worker as separate services so heavy processing does not block c
 
 The only user-facing command is `/upscale` which accepts an `image` attachment and a `type` choice between "General Photo" and "Anime / Illustration". The command validates the file type, enqueues a job, and replies with a job number; results are posted back to the same channel once processing completes.
 
-## 🧩 Development & structure
-
-Core files:
-- `bot.py`: Discord integration, command handling, and database interaction.
-- `worker.py`: The main processing loop that polls the database, runs the AI engine, and manages Azure uploads.
-- `database.py`: Asyncpg-backed persistence for job queues.
-- `cogs/UpScale.py`: Discord slash command definition and handling.
-- `loggers/BotLogger.py`: Centralized logging configuration using `rich` for beautiful console output and `TimedRotatingFileHandler` for daily log files.
-- `utils/ImageProcessing.py`: Real-ESRGAN integration for image upscaling.
-- `utils/Deliverer.py`: Handles uploading processed results to Azure Blob Storage and sending links back to Discord.
-- `utils/PatchFix.py`: Compatibility shims for torchvision.
-
-### 📂 Project Structure
-```text
-Discord-Image-Upscaler-Bot/
-├── cogs/               # Discord command modules
-├── loggers/            # Logging configuration (BotLogger.py)
-├── logs/               # Auto-generated log files
-│   ├── bot_logs/       # Discord bot logs (rotated daily)
-│   └── worker_logs/    # AI worker logs (rotated daily)
-├── models/             # Place .pth model files here
-├── utils/              # Helper scripts (Deliverer, ImageProcessing)
-├── bot.py              # Main Bot entry point
-├── worker.py           # Background AI worker
-└── start_upscaler.bat  # Launcher script
-
 ## 🛠 Built With
 
 Built with Python and discord.py for the bot. Real-ESRGAN (using basicsr's RRDBNet) and PyTorch handle the upscaling — the code will use your GPU when available (and FP16 to save memory where supported). OpenCV and NumPy handle image I/O, requests downloads attachments, asyncpg stores jobs in PostgreSQL, and python-dotenv loads local config during development. For production, run the bot and worker as separate processes using Docker, systemd, or Kubernetes.
@@ -117,5 +96,3 @@ Thanks to Real-ESRGAN and its contributors for the upscaling models, to basicsr 
 ## ✉️ Contact
 
 Open an issue for bugs or feature requests, or start a discussion if you want help with deployment or extensions.
-
-built with ⚒️ Python · discord.py · Real-ESRGAN · PyTorch · basicsr · OpenCV · NumPy · requests · asyncpg · python-dotenv · Docker / systemd / Kubernetes

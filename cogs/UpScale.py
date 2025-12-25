@@ -120,3 +120,6 @@ class UpscaleCog(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(UpscaleCog(bot))
+    
+    
+# TODO: ADD DOWNLOAD BUTTON TO THE FINAL RESULT
