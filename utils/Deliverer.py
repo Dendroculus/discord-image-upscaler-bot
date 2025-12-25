@@ -1,7 +1,9 @@
 import aiohttp
 import uuid
 from azure.storage.blob.aio import BlobServiceClient
+import re
 from constants.configs import DISCORD_TOKEN, AZURE_STORAGE_BLOB
+from constants.Emojis import customs
 
 async def deliver_result(session: aiohttp.ClientSession, channel_id: int, image_data: bytes, user_id: int, model_type: str) -> bool:
     """
@@ -34,11 +36,37 @@ async def deliver_result(session: aiohttp.ClientSession, channel_id: int, image_
 
         print(f"Upload success! Sending link to Discord: {file_url}")
         
+        emoji_str = customs["download"]
+        emoji_payload = {"name": emoji_str}
+    
+        match = re.search(r":(\w+):(\d+)>", emoji_str)
+        if match:
+            emoji_payload = {
+                "name": match.group(1), 
+                "id": match.group(2)    
+            }
+            
         payload = {
             "content": f"(●'◡'●) here's your UpScaled image <@{user_id}>! Mode: `{model_type.capitalize()}`",
             "embeds": [{
+                "title": "✨ Upscale Successful",
+                "color": 5763719, 
                 "image": {"url": file_url},
-            }]
+            }],
+            "components": [
+                {
+                    "type": 1,  
+                    "components": [
+                        {
+                            "type": 2,       
+                            "style": 5,     
+                            "label": "Download Full Image",
+                            "url": file_url, 
+                            "emoji": emoji_payload
+                        }
+                    ]
+                }
+            ]
         }
 
         async with session.post(discord_api_url, headers=headers, json=payload) as resp:

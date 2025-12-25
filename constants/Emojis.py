@@ -5,5 +5,6 @@ process = {
 }
 
 customs = {
-    "paint" : "<:paint:1451921556682051750>"
+    "paint" : "<:paint:1451921556682051750>",
+    "download" : "<:download:1453782301312811163>"
 }
