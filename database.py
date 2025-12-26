@@ -94,7 +94,8 @@ class Database:
                     application_id TEXT,
                     status TEXT DEFAULT 'queued',
                     output_path TEXT,
-                    created_at TIMESTAMPTZ DEFAULT NOW()
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    last_heartbeat TIMESTAMPTZ DEFAULT NOW()
                 );
                 """
             )
@@ -108,6 +109,28 @@ class Database:
                 
                 CREATE INDEX IF NOT EXISTS idx_upscale_jobs_status 
                 ON upscale_jobs(status);
+                """
+            )
+            
+    async def update_heartbeat(self, job_id: int):
+        """Updates the last_heartbeat timestamp to prove the worker is alive."""
+        async with self.get_connection_safe() as conn:
+            await conn.execute(
+                "UPDATE upscale_jobs SET last_heartbeat = NOW() WHERE job_id = $1",
+                job_id
+            )
+
+    async def recover_stale_jobs(self):
+        """
+        Resets jobs where the worker hasn't reported in > 2 minutes.
+        """
+        async with self.get_connection_safe() as conn:
+            await conn.execute(
+                """
+                UPDATE upscale_jobs
+                SET status = 'queued'
+                WHERE status = 'processing'
+                AND last_heartbeat < NOW() - INTERVAL '2 minutes'
                 """
             )
             
@@ -329,21 +352,6 @@ class Database:
                 SELECT COUNT(*)
                 FROM upscale_jobs
                 WHERE status IN ('queued', 'processing')
-                """
-            )
-            
-    async def recover_stale_jobs(self):
-        """
-        Resets jobs that have been stuck in 'processing' for too long.
-        This handles scenarios where a worker crashes mid-job.
-        """
-        async with self.pool.acquire() as conn:
-            await conn.execute(
-                """
-                UPDATE upscale_jobs
-                SET status = 'queued'
-                WHERE status = 'processing'
-                AND created_at < NOW() - INTERVAL '10 minutes'
                 """
             )
             

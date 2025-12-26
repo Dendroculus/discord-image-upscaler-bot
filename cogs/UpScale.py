@@ -2,7 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from constants.Emojis import process, customs
-
+from constants.configs import MAX_IMAGE_SIZE
 """
 UpScale.py
 
@@ -83,6 +83,12 @@ class UpscaleCog(commands.Cog):
             type (app_commands.Choice[str]): Selected AI upscaling model.
         """
 
+        if image.size > MAX_IMAGE_SIZE:
+            return await interaction.response.send_message(
+                f"❌ Image size exceeds the maximum limit of {MAX_IMAGE_SIZE // (1024 * 1024)} MB.",
+                ephemeral=True
+            )
+            
         if not image.content_type or not image.content_type.startswith("image/"):
             return await interaction.response.send_message(
                 "❌ Image files only.",

@@ -14,6 +14,12 @@ from utils.Deliverer import deliver_result
 from constants.Emojis import process, customs
 
 def silence_event_loop_closed(func):
+    """
+    Wrapper to suppress 'Event loop is closed' RuntimeError on Windows.
+    
+    This is required because the ProactorEventLoop on Windows can raise 
+    noisy exceptions during the shutdown of async generators or transports.
+    """
     @wraps(func)
     def wrapper(self, *args, **kwargs):
         try:
@@ -33,75 +39,37 @@ init_logging(
 
 logger = logging.getLogger("Worker")
 
-"""
-worker.py
-
-Background worker service for the AI Upscaler application.
-Responsible for polling the database for queued jobs, processing images using
-the AI engine, and handling the delivery of results to Azure and Discord.
-"""
-
-async def update_status_embed(session: aiohttp.ClientSession, application_id: str, token: str, status: str, color: int):
-    """
-    Updates the Discord interaction embed with a new status message and color.
-    Uses the shared aiohttp session to prevent connection overhead.
-    """
-    if session is None:
-        return
-
-    url = f"https://discord.com/api/v10/webhooks/{application_id}/{token}/messages/@original"
-    
-    embed = {
-        "title": f"{customs['paint']} Image Upscaler",
-        "description": "Your image is being enhanced.",
-        "color": color, 
-        "fields": [
-            {"name": "Status", "value": status, "inline": True},
-        ],
-        "footer": {"text": "This might take a moment..."}
-    }
-    
-    try:
-        async with session.patch(url, json={"embeds": [embed]}) as response:
-            await response.read()
-    except Exception as e:
-        logger.warning(f"Failed to update status embed: {e}")
-
-async def delete_progress_message(session: aiohttp.ClientSession, application_id: str, token: str):
-    """
-    Deletes the original interaction response (progress bar) to clean up the channel
-    after job completion. Safe to call even if session is closing.
-    """
-    if session is None:
-        logger.warning("⚠️ Session was None when trying to delete message. Skipping.")
-        return
-
-    url = f"https://discord.com/api/v10/webhooks/{application_id}/{token}/messages/@original"
-    try:
-        async with session.delete(url) as resp:
-            await resp.read()
-    except Exception as e:
-        logger.warning(f"Failed to delete progress message: {e}")
-
 class Worker:
     """
-    Main worker class responsible for job orchestration.
-    
+    Orchestrates the lifecycle of background image upscaling jobs.
+
+    This class handles database polling, job claiming, resource management,
+    heartbeat monitoring, and the coordination of the image processing pipeline.
+
     Attributes:
-        poll_interval (float): Time in seconds to wait between polling the database.
-        db (Database): Database instance for job queue management.
-        session (aiohttp.ClientSession): Shared HTTP session for API requests.
+        db (Database): The database interface for job queue management.
+        poll_interval (float): Time in seconds to wait when the queue is empty.
+        session (Optional[aiohttp.ClientSession]): Persistent HTTP session for API requests.
     """
 
     def __init__(self, poll_interval: float = 2.0):
+        """
+        Initializes the Worker instance.
+
+        Args:
+            poll_interval (float): The sleep duration between queue checks when idle.
+        """
         self.db = Database()
         self.poll_interval = poll_interval
         self.session: Optional[aiohttp.ClientSession] = None
 
     async def start(self):
         """
-        Initializes the database connection, performs startup maintenance,
-        and starts the main processing loop within a session context manager.
+        Bootstraps the worker service.
+
+        Establishes the HTTP session and database connection, performs startup
+        maintenance (recovering stale jobs and pruning logs), and initiates
+        the main processing loop.
         """
         async with aiohttp.ClientSession() as session:
             self.session = session
@@ -118,46 +86,111 @@ class Worker:
 
     async def _run_loop(self):
         """
-        Continuous loop that checks for new jobs and processes them.
+        Executes the continuous job polling loop.
+
+        This method checks the database for queued jobs. If a job is found,
+        it is processed immediately. If the queue is empty, the worker sleeps
+        for `poll_interval` seconds to reduce database load.
         """
         while True:
-            job = await self._next_job()
+            job = await self.db.claim_next_queued_job()
             if job:
                 await self._process_job(job)
             else:
                 await asyncio.sleep(self.poll_interval)
 
-    async def _next_job(self) -> Optional[Dict[str, Any]]:
+    async def _run_heartbeat_monitor(self, job_id: int):
         """
-        Claims the next available 'queued' job from the database.
+        Background task that updates the job's heartbeat timestamp.
+
+        This prevents the database recovery logic from marking the job as stale
+        during long-running processes.
+
+        Args:
+            job_id (int): The unique identifier of the job to monitor.
         """
-        return await self.db.claim_next_queued_job()
+        try:
+            while True:
+                await asyncio.sleep(30)
+                try:
+                    await self.db.update_heartbeat(job_id)
+                    logger.debug(f"💓 Job #{job_id} heartbeat sent.")
+                except Exception as e:
+                    logger.warning(f"Heartbeat failed for #{job_id}: {e}")
+        except asyncio.CancelledError:
+            pass
+
+    async def _update_discord_status(self, job: Dict[str, Any], status_text: str, color: int):
+        """
+        Updates the Discord interaction message with the current job status.
+
+        Args:
+            job (Dict[str, Any]): The job dictionary containing tokens and IDs.
+            status_text (str): The status message to display in the embed.
+            color (int): The hex color code for the embed border.
+        """
+        if not (job.get("token") and job.get("application_id") and self.session):
+            return
+
+        url = f"https://discord.com/api/v10/webhooks/{job['application_id']}/{job['token']}/messages/@original"
+        embed = {
+            "title": f"{customs['paint']} Image Upscaler",
+            "description": "Your image is being enhanced.",
+            "color": color, 
+            "fields": [{"name": "Status", "value": status_text, "inline": True}],
+            "footer": {"text": "This might take a moment..."}
+        }
+        
+        try:
+            async with self.session.patch(url, json={"embeds": [embed]}) as response:
+                await response.read()
+        except Exception as e:
+            logger.warning(f"Failed to update status embed: {e}")
+
+    async def _cleanup_discord_message(self, job: Dict[str, Any]):
+        """
+        Deletes the original interaction response (progress bar) upon completion.
+
+        Args:
+            job (Dict[str, Any]): The job dictionary containing tokens and IDs.
+        """
+        if not (job.get("token") and job.get("application_id") and self.session):
+            return
+
+        url = f"https://discord.com/api/v10/webhooks/{job['application_id']}/{job['token']}/messages/@original"
+        try:
+            async with self.session.delete(url) as resp:
+                await resp.read()
+        except Exception as e:
+            logger.warning(f"Failed to delete progress message: {e}")
 
     async def _process_job(self, job: Dict[str, Any]):
         """
-        Executes the upscaling pipeline for a single job.
-        
-        Flow:
-        1. Update status to 'Processing' (Blue).
-        2. Upscale image via AI engine (blocking operation run in thread).
-        3. Update status to 'Uploading' (Purple).
-        4. Upload to Azure & Send Discord Message.
-        5. Mark as Completed & Delete Progress Bar.
+        Orchestrates the end-to-end processing pipeline for a single job.
+
+        Sequence:
+        1. Starts the heartbeat monitor.
+        2. Updates Discord status to 'Processing'.
+        3. Offloads the heavy AI processing to a separate thread.
+        4. Updates Discord status to 'Uploading'.
+        5. Uploads the result to Azure and delivers the final link to Discord.
+        6. Marks the job as completed in the database and cleans up UI elements.
+
+        Args:
+            job (Dict[str, Any]): The job payload from the database.
         """
         job_id = job["job_id"]
-        
-        if job.get("token") and job.get("application_id"):
-            await update_status_embed(
-                self.session,
-                job["application_id"], 
-                job["token"], 
+        logger.info(f"🔄 Processing job #{job_id} ({job['model_type']}) ...")
+
+        heartbeat_task = asyncio.create_task(self._run_heartbeat_monitor(job_id))
+
+        try:
+            await self._update_discord_status(
+                job, 
                 f"{process['processing']} **Processing...**", 
                 5763719
             )
-
-        logger.info(f"🔄 Processing job #{job_id} ({job['model_type']}) ...")
-        
-        try:
+            
             image_data = await asyncio.to_thread(
                 process_image,
                 job["image_url"],
@@ -165,45 +198,42 @@ class Worker:
                 job["model_type"],
             )
 
-            if image_data:
-                if job.get("token") and job.get("application_id"):
-                    await update_status_embed(
-                        self.session,
-                        job["application_id"], 
-                        job["token"], 
-                        f"{process['uploading']} **Uploading...**", 
-                        5793266
-                    )
-
-                success = await deliver_result(
-                    session=self.session,
-                    channel_id=job["channel_id"],
-                    image_data=image_data, 
-                    user_id=job["user_id"],
-                    model_type=job["model_type"]
-                )
-                
-                if success:
-                    await self.db.mark_completed(job_id, "Uploaded to Azure")
-                    await self.db.mark_job_sent(job_id)
-
-                    if job.get("token") and job.get("application_id"):
-                         await delete_progress_message(
-                             self.session,
-                             job["application_id"], 
-                             job["token"]
-                         )
-
-                    logger.info(f"Job #{job_id} completed and delivered.")
-                else:
-                    raise RuntimeError("Discord delivery failed.")
-            else:
+            if not image_data:
                 raise RuntimeError("AI engine returned no output.")
+
+            await self._update_discord_status(
+                job,
+                f"{process['uploading']} **Uploading...**", 
+                5793266
+            )
+
+            success = await deliver_result(
+                session=self.session,
+                channel_id=job["channel_id"],
+                image_data=image_data, 
+                user_id=job["user_id"],
+                model_type=job["model_type"]
+            )
+            
+            if not success:
+                raise RuntimeError("Discord delivery failed.")
+
+            await self.db.mark_completed(job_id, "Uploaded to Azure")
+            await self.db.mark_job_sent(job_id)
+            await self._cleanup_discord_message(job)
+
+            logger.info(f"Job #{job_id} completed and delivered.")
 
         except Exception as e:
             await self.db.mark_failed(job_id, str(e))
             logger.error(f"❌ Job #{job_id} failed: {e}")
-
+            
+        finally:
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
 
 async def main():
     worker = Worker(poll_interval=2.0)
