@@ -7,6 +7,7 @@ from functools import wraps
 from typing import Optional, Dict, Any
 from asyncio.proactor_events import _ProactorBasePipeTransport
 
+import contextlib
 from database import Database
 from loggers.BotLogger import init_logging
 from utils.ImageProcessing import process_image
@@ -109,16 +110,13 @@ class Worker:
         Args:
             job_id (int): The unique identifier of the job to monitor.
         """
-        try:
-            while True:
-                await asyncio.sleep(30)
-                try:
-                    await self.db.update_heartbeat(job_id)
-                    logger.debug(f"💓 Job #{job_id} heartbeat sent.")
-                except Exception as e:
-                    logger.warning(f"Heartbeat failed for #{job_id}: {e}")
-        except asyncio.CancelledError:
-            pass
+        while True:
+            await asyncio.sleep(30)
+            try:
+                await self.db.update_heartbeat(job_id)
+                logger.debug(f"💓 Job #{job_id} heartbeat sent.")
+            except Exception as e:
+                logger.warning(f"Heartbeat failed for #{job_id}: {e}")
 
     async def _update_discord_status(self, job: Dict[str, Any], status_text: str, color: int):
         """
@@ -230,10 +228,8 @@ class Worker:
             
         finally:
             heartbeat_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat_task
-            except asyncio.CancelledError:
-                pass
 
 async def main():
     worker = Worker(poll_interval=2.0)
