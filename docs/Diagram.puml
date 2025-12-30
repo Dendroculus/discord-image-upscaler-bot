@@ -1,0 +1,96 @@
+@startuml
+!theme plain
+skinparam backgroundColor #1E1E1E
+skinparam handwritten false
+skinparam shadow true
+skinparam defaultFontName "Segoe UI"
+skinparam roundCorner 15
+
+skinparam nodesep 50
+skinparam ranksep 50
+left to right direction
+skinparam linetype polyline
+
+skinparam node {
+    BackgroundColor #2B2D31
+    BorderColor #5865F2
+    FontColor White
+    FontSize 14
+    BorderThickness 1.5
+}
+skinparam component {
+    BackgroundColor #383A40
+    BorderColor #B5BAC1
+    FontColor White
+    FontSize 13
+    Style rectangle
+}
+skinparam database {
+    BackgroundColor #2C2F33
+    BorderColor #FEE75C
+    FontColor White
+    FontSize 14
+}
+skinparam cloud {
+    BackgroundColor #0078D4
+    BorderColor White
+    FontColor White
+}
+skinparam actor {
+    BackgroundColor White
+    BorderColor #5865F2
+    FontColor Black
+}
+skinparam arrow {
+    Color #B5BAC1
+    FontColor #CCCCCC
+    FontSize 12
+    Thickness 1.5
+}
+skinparam rectangle {
+    BackgroundColor transparent
+    BorderColor #5865F2
+    BorderStyle dashed
+    FontColor #99AAB5
+    FontSize 12
+}
+
+actor "User" as user
+
+rectangle "Discord Ecosystem" {
+    component "Slash Command" as slash
+    component "Discord API" as discord_api
+}
+
+rectangle "Producer Service" {
+    node "Bot Node" {
+        component "Bot.py" as bot
+    }
+}
+
+database "PostgreSQL\n(Job Queue)" as db
+
+rectangle "Consumer Service" {
+    node "Worker Node" {
+        component "Worker.py" as worker
+        component "AI Engine" as ai
+    }
+}
+
+cloud "Azure Blob\nStorage" as azure
+
+worker -[hidden]down-> azure
+
+user --> slash : /upscale
+slash --> bot : Interaction
+bot --> db : 1. Insert Job
+
+db <-- worker : 2. Poll & Claim
+worker <-> ai : 3. Process
+
+worker --> azure : 4. Upload File
+azure ..> worker : Return URL
+
+worker -> discord_api : 5. Send Embed
+discord_api --> user : 6. Notify
+@enduml

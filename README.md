@@ -6,9 +6,10 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.9.4-blue.svg" alt="Python Version">
   <img src="https://img.shields.io/badge/discord.py-v2.x-7289DA.svg?logo=discord&logoColor=white" alt="discord.py">
+  <img src="https://img.shields.io/badge/PostgreSQL-316192?logo=postgresql&logoColor=white" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/Azure%20Blob%20Storage-Storage-0078D4.svg?logo=microsoftazure&logoColor=white" alt="Azure Blob Storage">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT">
   <img src="https://img.shields.io/badge/status-Active-green.svg" alt="Update Status">
-  <img src="https://img.shields.io/badge/Azure%20Blob%20Storage-Storage-0078D4.svg?logo=microsoftazure&logoColor=white" alt="Azure Blob Storage">
 </p>
 
 <div align="center">
@@ -19,9 +20,58 @@
 
 Discord Image Upscaler Bot is a simple, reliable tool that accepts image attachments via a slash command, enqueues AI upscaling jobs in PostgreSQL, processes them with Real-ESRGAN in a separate worker, and returns the upscaled image to the original channel while cleaning up local files. It is built with Python and discord.py and designed to be run as two cooperating processes so the bot remains responsive while the heavy lifting runs on CPU/GPU in a worker.
 
-## 🔍 What it does
+## 🎥 Demo
 
-The bot exposes a single slash command that takes an image and a model type choice, validates the input, and writes a job record to a database. A separate worker process polls the database, downloads the image, runs the Real-ESRGAN upscaler, writes the resulting file to an output directory, and updates job status. The bot monitors completed jobs and posts results back into the channel that requested the job, then deletes the local file to avoid disk accumulation.
+| Original (Low Res) | Real-ESRGAN Upscaled (4x) |
+| :---: | :---: |
+| <img src="./assets/previews/ado.jpg" width="300"> | <img src="./assets/previews/ado_upscaled.png" width="300"> |
+
+<details>
+  <summary><b>🎥 Click to watch the preview (20 s) </b></summary>
+
+  <video width="650" controls>
+    <source src="./assets/previews/Preview.mp4" type="video/mp4" autoplay muted>
+
+</details>
+
+## ✨ Key Features
+
+- 🚀 400% AI Upscaling using `RealESRGAN_x4plus` and `RealESRGAN_x4plus_anime_6B`.
+- ☁️ Cloud-native results uploaded to **Azure Blob Storage** with permanent CDN links.
+- 🛡️ Crash-resilient with heartbeat and auto-recovery for stale jobs.
+- 🔒 Concurrency-safe using PostgreSQL `FOR UPDATE SKIP LOCKED`.
+- 🧠 Smart caching via a `ModelRegistry` to manage VRAM (dynamic load/unload).
+
+## 🏗️ Architecture
+
+<img src="./assets/ArchitectureDiagram.png">
+
+## 📂 Project Structure
+
+```bash
+Discord-Image-Upscaler-Bot/
+├── bot.py                     # Entry point for the Discord Bot (Producer)
+├── worker.py                  # Entry point for the Background Worker (Consumer)
+├── database.py                # Async Database Interface
+├── .env                       # Secrets and configs
+│
+├── cogs/                      # Discord Slash Commands
+│   └── UpScale.py
+│
+├── constants/                 # Static configurations
+│   ├── configs.py             # Constant Values
+│   ├── Emojis.py              # Emoji definitions
+│   └── ModelRegistry.py       # Dynamic model loader
+│
+├── services/                  # External service adapters
+│   ├── StorageService.py      # Azure Blob logic
+│   └── NotificationService.py # Discord embed logic
+│
+├── utils/                     # Core utilities
+│   └── ImageProcessing.py     # AI inference engine
+│
+└── models/                    # Pre-trained .pth weights
+```
 
 ## 🚀 Quick start
 
@@ -43,11 +93,10 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-
-
 ```env
 DISCORD_TOKEN=your_token_here
 POSTGRE_CONN_STRING=postgres://user:password@localhost:5432/upscaler
+AZURE_CONNECTION_STRING=your_azure_connection_string_here
 ```
 
 If something goes wrong, check the logs from both processes: the worker prints processing and model errors, and the bot prints delivery and permission errors.
@@ -66,12 +115,9 @@ The code expects two model files by default: `RealESRGAN_x4plus.pth` for general
 
 ## ▶️ Running locally
 
-Start the worker with `python worker.py` to begin polling for queued jobs and performing upscales. Start the bot with `python bot.py` to register the `/upscale` slash command and run the delivery loop. Use `/upscale` in a server where the bot is invited; upload an image attachment and choose the model type. The command will confirm a queued job ID and the worker will process the image and save the output into `output/`; the bot will then post the upscaled image into the originating channel and remove the local file.
+Start the worker with `python worker.py` to begin polling for queued jobs and performing upscales. Start the bot with `python bot.py` to register the `/upscale` slash command and run the delivery loop. Use `/upscale` in a server where the bot is invited; upload an image attachment and choose the model type. The command will confirm a queued job ID and the worker will process the image and save the output into `output/`; the bot will then post the upscaled image into the originating channel and remove the local file. Make sure your device is capable of running the models, ideally with a CUDA-capable GPU and sufficient VRAM (4GB+ recommended).
 
 Or if you want to quit that hassle, you can use the batch files provided in the repository root : [Batch File Link ](https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/start_upscaler.bat)
-## ☁️ Deployment tips
-
-Run the bot and worker as separate services so heavy processing does not block command handling. For small deployments, a Docker Compose setup with two services and a shared `models/` and `output/` volume is convenient. For production, consider separate systemd units, Docker containers orchestrated by a process manager, or Kubernetes Deployments with GPU node selection. A managed PostgreSQL instance reduces operational overhead. Monitor disk usage and prune old entries/output files if you expect high throughput.
 
 ## 🗂️ Commands
 
@@ -83,7 +129,7 @@ Built with Python and discord.py for the bot. Real-ESRGAN (using basicsr's RRDBN
 
 ## 🤝 Contributing
 
-Fork the repository, create a focused branch, and open a pull request describing your change. Smaller, well-tested changes are easier to review. Keep database migrations minimal and backward compatible when possible.
+Contributions are welcome! Please read `CONTRIBUTING.md` for the contribution process and code of conduct. When opening PRs, include tests where applicable and a short description of the change.
 
 ## 📜 License
 
@@ -91,7 +137,8 @@ This project is licensed under the MIT License. See the `LICENSE` file for full 
 
 ## 🙏 Acknowledgements
 
-Thanks to Real-ESRGAN and its contributors for the upscaling models, to basicsr and PyTorch for the model and runtime primitives, and to the open source community for the libraries and examples that made this project possible.
+- **Real-ESRGAN** for the upscaling models and research.
+- **discord.py** for the bot framework.
 
 ## ✉️ Contact
 
