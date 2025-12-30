@@ -29,8 +29,8 @@ Discord Image Upscaler Bot is a simple, reliable tool that accepts image attachm
 <details>
   <summary><b>🎥 Click to watch the preview (20 s) </b></summary>
 
-  <video width="650" controls>
-    <source src="./assets/previews/Preview.mp4" type="video/mp4" autoplay muted>
+  <video width="650" controls src="https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/assets/previews/Preview.mp4"
+autoplay muted>
 
 </details>
 
