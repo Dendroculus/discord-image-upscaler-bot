@@ -42,7 +42,7 @@ Discord Image Upscaler Bot is a simple, reliable tool that accepts image attachm
 
 ## 🏗️ Architecture
 
-<img src="./assets/ArchitectureDiagram.png">
+<img src="https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/assets/ArchitectureDiagram.png">
 
 ## 📂 Project Structure
 
