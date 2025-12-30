@@ -129,7 +129,7 @@ Built with Python and discord.py for the bot. Real-ESRGAN (using basicsr's RRDBN
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please read `CONTRIBUTING.md` for the contribution process and code of conduct. When opening PRs, include tests where applicable and a short description of the change.
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution process and code of conduct. When opening PRs, include tests where applicable and a short description of the change.
 
 ## 📜 License
 

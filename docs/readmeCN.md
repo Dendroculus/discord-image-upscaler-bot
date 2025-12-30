@@ -134,7 +134,7 @@ Bot 部分使用 Python 与 discord.py 构建。Real-ESRGAN（基于 basicsr 的
 
 ## 🤝 贡献
 
-欢迎贡献！请阅读 `CONTRIBUTING.md` 以了解贡献流程与行为准则。提交 PR 时，请在适用位置包含测试并在说明中简要描述更改内容。
+欢迎贡献！请阅读 [CONTRIBUTINGcn.md](CONTRIBUTINGcn.md) 以了解贡献流程与行为准则。提交 PR 时，请在适用位置包含测试并在说明中简要描述更改内容。
 
 ## 📜 许可证
 
