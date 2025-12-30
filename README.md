@@ -24,15 +24,13 @@ Discord Image Upscaler Bot is a simple, reliable tool that accepts image attachm
 
 | Original (Low Res) | Real-ESRGAN Upscaled (4x) |
 | :---: | :---: |
-| <img src="./assets/previews/ado.jpg" width="300"> | <img src="./assets/previews/ado_upscaled.png" width="300"> |
+| <img src="https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/assets/previews/ado.jpg" width="300"> | <img src="https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/assets/previews/ado_upscaled.png" width="300"> |
 
 <details>
   <summary><b>🎥 Click to watch the preview (20 s) </b></summary>
 
-  <video width="650" controls src="https://raw.githubusercontent.com/Dendroculus/discord-image-upscaler-bot/main/assets/previews/Preview.mp4"
-autoplay muted>
-
-</details>
+  <img src="https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/assets/previews/Preview.gif">
+</details>  
 
 ## ✨ Key Features
 
