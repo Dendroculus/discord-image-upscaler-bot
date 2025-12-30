@@ -29,7 +29,9 @@ Discord Image Upscaler Bot is a simple, reliable tool that accepts image attachm
 <details>
   <summary><b>🎥 Click to watch the preview (20 s) </b></summary>
 
-  <img src="https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/assets/previews/Preview.gif">
+  <br>
+  <video src="https://github-production-user-asset-6210df.s3.amazonaws.com/224712928/530954801-44ea77eb-489a-44e5-9b1d-ef48472f8dc3.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20251230%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251230T105413Z&X-Amz-Expires=300&X-Amz-Signature=16b5b57028579d73a7da4aedcbd399810068b719b89e1b75d0433a81614d684e&X-Amz-SignedHeaders=host">
+    
 </details>  
 
 ## ✨ Key Features
