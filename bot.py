@@ -3,7 +3,7 @@ import discord
 from discord.ext import commands
 from database import Database
 from utils.PatchFix import patch_torchvision
-from constants.configs import DISCORD_TOKEN
+from constants.configs import DISCORD_BOT_TOKEN
 from loggers.BotLogger import init_logging
 
 init_logging(
@@ -85,4 +85,4 @@ class UpscaleBot(commands.AutoShardedBot):
 
 if __name__ == "__main__":
     bot = UpscaleBot()
-    bot.run(DISCORD_TOKEN)
+    bot.run(DISCORD_BOT_TOKEN)

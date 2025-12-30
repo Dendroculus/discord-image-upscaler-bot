@@ -10,7 +10,8 @@ from PIL import Image
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 from typing import Optional
-from constants.configs import General_Path, Anime_Path, MAX_IMAGE_DIMENSION
+from constants.configs import MAX_IMAGE_DIMENSION
+from constants.ModelRegistry import ModelRegistry
 
 class AIUpscaler:
     """
@@ -50,10 +51,10 @@ class AIUpscaler:
         """
         if model_type == "anime":
             model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4)
-            path = Anime_Path
+            path = ModelRegistry.get_path("anime")
         else:
             model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
-            path = General_Path
+            path = ModelRegistry.get_path("general")
 
         if not os.path.exists(path):
             raise FileNotFoundError(f"Model file missing: {path}")
