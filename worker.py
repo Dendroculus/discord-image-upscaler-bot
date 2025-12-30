@@ -11,15 +11,14 @@ import contextlib
 from database import Database
 from loggers.BotLogger import init_logging
 from utils.ImageProcessing import process_image
-from utils.Deliverer import deliver_result
 from constants.Emojis import process, customs
+
+from utils.StorageService import StorageService
+from utils.NotificationService import NotificationService
 
 def silence_event_loop_closed(func):
     """
     Wrapper to suppress 'Event loop is closed' RuntimeError on Windows.
-    
-    This is required because the ProactorEventLoop on Windows can raise 
-    noisy exceptions during the shutdown of async generators or transports.
     """
     @wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -43,35 +42,15 @@ logger = logging.getLogger("Worker")
 class Worker:
     """
     Orchestrates the lifecycle of background image upscaling jobs.
-
-    This class handles database polling, job claiming, resource management,
-    heartbeat monitoring, and the coordination of the image processing pipeline.
-
-    Attributes:
-        db (Database): The database interface for job queue management.
-        poll_interval (float): Time in seconds to wait when the queue is empty.
-        session (Optional[aiohttp.ClientSession]): Persistent HTTP session for API requests.
+    Now acts as a Coordinator between the DB, AI Engine, Storage, and Notifier.
     """
 
     def __init__(self, poll_interval: float = 2.0):
-        """
-        Initializes the Worker instance.
-
-        Args:
-            poll_interval (float): The sleep duration between queue checks when idle.
-        """
         self.db = Database()
         self.poll_interval = poll_interval
         self.session: Optional[aiohttp.ClientSession] = None
 
     async def start(self):
-        """
-        Bootstraps the worker service.
-
-        Establishes the HTTP session and database connection, performs startup
-        maintenance (recovering stale jobs and pruning logs), and initiates
-        the main processing loop.
-        """
         async with aiohttp.ClientSession() as session:
             self.session = session
             
@@ -86,13 +65,6 @@ class Worker:
             await self._run_loop()
 
     async def _run_loop(self):
-        """
-        Executes the continuous job polling loop.
-
-        This method checks the database for queued jobs. If a job is found,
-        it is processed immediately. If the queue is empty, the worker sleeps
-        for `poll_interval` seconds to reduce database load.
-        """
         while True:
             job = await self.db.claim_next_queued_job()
             if job:
@@ -101,15 +73,6 @@ class Worker:
                 await asyncio.sleep(self.poll_interval)
 
     async def _run_heartbeat_monitor(self, job_id: int):
-        """
-        Background task that updates the job's heartbeat timestamp.
-
-        This prevents the database recovery logic from marking the job as stale
-        during long-running processes.
-
-        Args:
-            job_id (int): The unique identifier of the job to monitor.
-        """
         while True:
             await asyncio.sleep(30)
             try:
@@ -119,14 +82,6 @@ class Worker:
                 logger.warning(f"Heartbeat failed for #{job_id}: {e}")
 
     async def _update_discord_status(self, job: Dict[str, Any], status_text: str, color: int):
-        """
-        Updates the Discord interaction message with the current job status.
-
-        Args:
-            job (Dict[str, Any]): The job dictionary containing tokens and IDs.
-            status_text (str): The status message to display in the embed.
-            color (int): The hex color code for the embed border.
-        """
         if not (job.get("token") and job.get("application_id") and self.session):
             return
 
@@ -146,12 +101,6 @@ class Worker:
             logger.warning(f"Failed to update status embed: {e}")
 
     async def _cleanup_discord_message(self, job: Dict[str, Any]):
-        """
-        Deletes the original interaction response (progress bar) upon completion.
-
-        Args:
-            job (Dict[str, Any]): The job dictionary containing tokens and IDs.
-        """
         if not (job.get("token") and job.get("application_id") and self.session):
             return
 
@@ -163,20 +112,6 @@ class Worker:
             logger.warning(f"Failed to delete progress message: {e}")
 
     async def _process_job(self, job: Dict[str, Any]):
-        """
-        Orchestrates the end-to-end processing pipeline for a single job.
-
-        Sequence:
-        1. Starts the heartbeat monitor.
-        2. Updates Discord status to 'Processing'.
-        3. Offloads the heavy AI processing to a separate thread.
-        4. Updates Discord status to 'Uploading'.
-        5. Uploads the result to Azure and delivers the final link to Discord.
-        6. Marks the job as completed in the database and cleans up UI elements.
-
-        Args:
-            job (Dict[str, Any]): The job payload from the database.
-        """
         job_id = job["job_id"]
         logger.info(f"🔄 Processing job #{job_id} ({job['model_type']}) ...")
 
@@ -205,17 +140,16 @@ class Worker:
                 5793266
             )
 
-            success = await deliver_result(
+            file_url = await StorageService.upload_file(image_data)
+            
+            await NotificationService.send_delivery_message(
                 session=self.session,
                 channel_id=job["channel_id"],
-                image_data=image_data, 
                 user_id=job["user_id"],
-                model_type=job["model_type"]
+                model_type=job["model_type"],
+                file_url=file_url
             )
             
-            if not success:
-                raise RuntimeError("Discord delivery failed.")
-
             await self.db.mark_completed(job_id, "Uploaded to Azure")
             await self.db.mark_job_sent(job_id)
             await self._cleanup_discord_message(job)
