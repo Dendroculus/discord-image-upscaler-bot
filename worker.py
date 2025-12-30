@@ -11,10 +11,10 @@ import contextlib
 from database import Database
 from loggers.BotLogger import init_logging
 from utils.ImageProcessing import process_image
-from constants.Emojis import process, customs
+from constants.emojis import process, customs
 
-from utils.StorageService import StorageService
-from utils.NotificationService import NotificationService
+from services.StorageService import StorageService
+from services.NotificationService import NotificationService
 
 def silence_event_loop_closed(func):
     """

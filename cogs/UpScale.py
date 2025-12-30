@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from constants.Emojis import process, customs
+from constants.emojis import process, customs
 from constants.ModelRegistry import ModelRegistry
 from constants.configs import MAX_IMAGE_SIZE
 """
