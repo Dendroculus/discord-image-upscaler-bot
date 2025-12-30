@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from constants.Emojis import process, customs
+from constants.ModelRegistry import ModelRegistry
 from constants.configs import MAX_IMAGE_SIZE
 """
 UpScale.py
@@ -56,8 +57,8 @@ class UpscaleCog(commands.Cog):
     )
     @app_commands.choices(
         type=[
-            app_commands.Choice(name="General Photo", value="general"),
-            app_commands.Choice(name="Anime / Illustration", value="anime"),
+            app_commands.Choice(name=m.capitalize(), value=m) 
+            for m in ModelRegistry.list_models() 
         ]
     )
     async def upscale(

@@ -1,35 +1,30 @@
 import aiohttp
-import uuid
 from azure.storage.blob.aio import BlobServiceClient
 import re
-from constants.configs import DISCORD_TOKEN, AZURE_STORAGE_BLOB
+from constants.configs import DISCORD_BOT_TOKEN, AZURE_STORAGE_BLOB, AZURE_CONTAINER_NAME, FILENAME
 from constants.Emojis import customs
 
 async def deliver_result(session: aiohttp.ClientSession, channel_id: int, image_data: bytes, user_id: int, model_type: str) -> bool:
     """
     Uploads raw image bytes to Azure Blob Storage and sends the link to Discord.
     """
-    connection_string = AZURE_STORAGE_BLOB
-    discord_token = DISCORD_TOKEN
-    container_name = "images" # NOTE :  This container must exist in Azure Blob Storage
     
-    if not connection_string:
+    if not AZURE_STORAGE_BLOB:
         print("❌ Error: AZURE_STORAGE_BLOB connection string is missing in .env")
         return False
 
-    filename = f"upscaled_{uuid.uuid4().hex[:8]}.png"
     
-    discord_api_url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
-    headers = {"Authorization": f"Bot {discord_token}"}
+    CHANNEL_MSG_ENDPOINT = f"https://discord.com/api/v10/channels/{channel_id}/messages"
+    headers = {"Authorization": f"Bot {DISCORD_BOT_TOKEN}"}
 
     try:
         file_size_mb = len(image_data) / (1024 * 1024)
-        print(f"☁️ Uploading {filename} ({file_size_mb:.2f} MB) to Azure...")
+        print(f"☁️ Uploading {FILENAME} ({file_size_mb:.2f} MB) to Azure...")
         
-        async with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
-            container_client = blob_service_client.get_container_client(container_name)
+        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_BLOB) as blob_service_client:
+            container_client = blob_service_client.get_container_client(AZURE_CONTAINER_NAME)
             
-            blob_client = container_client.get_blob_client(filename)
+            blob_client = container_client.get_blob_client(FILENAME)
             
             await blob_client.upload_blob(image_data, overwrite=True)
             file_url = blob_client.url
@@ -69,7 +64,7 @@ async def deliver_result(session: aiohttp.ClientSession, channel_id: int, image_
             ]
         }
 
-        async with session.post(discord_api_url, headers=headers, json=payload) as resp:
+        async with session.post(CHANNEL_MSG_ENDPOINT, headers=headers, json=payload) as resp:
             await resp.read() 
             if resp.status != 200:
                 error_text = await resp.text()
