@@ -11,7 +11,7 @@ from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 from typing import Optional
 from constants.configs import MAX_IMAGE_DIMENSION
-from constants.ModelRegistry import ModelRegistry
+from constants.model_registry import ModelRegistry
 
 class AIUpscaler:
     """
