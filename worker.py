@@ -1,4 +1,4 @@
-from utils.PatchFix import patch_torchvision
+from utils.patch_fix import patch_torchvision
 import asyncio
 import aiohttp
 import os
@@ -9,12 +9,12 @@ from asyncio.proactor_events import _ProactorBasePipeTransport
 
 import contextlib
 from database import Database
-from loggers.BotLogger import init_logging
-from utils.ImageProcessing import process_image
+from loggers.bot_logger import init_logging
+from utils.image_processing import process_image
 from constants.emojis import process, customs
 
-from services.StorageService import StorageService
-from services.NotificationService import NotificationService
+from services.storage_service import StorageService
+from services.notification_service import NotificationService
 
 def silence_event_loop_closed(func):
     """
@@ -51,6 +51,9 @@ class Worker:
         self.session: Optional[aiohttp.ClientSession] = None
 
     async def start(self):
+        """
+        Initializes the worker by setting up the database connection, performing startup maintenance tasks, and then entering the main processing loop to handle queued jobs.
+        """
         async with aiohttp.ClientSession() as session:
             self.session = session
             
@@ -65,6 +68,9 @@ class Worker:
             await self._run_loop()
 
     async def _run_loop(self):
+        """
+        Continuously polls the database for new queued jobs. When a job is claimed, it processes the job and then returns to polling. If no jobs are found, it waits for a specified interval before checking again.
+        """
         while True:
             job = await self.db.claim_next_queued_job()
             if job:
@@ -73,6 +79,9 @@ class Worker:
                 await asyncio.sleep(self.poll_interval)
 
     async def _run_heartbeat_monitor(self, job_id: int):
+        """
+        Periodically updates the heartbeat timestamp for the given job ID in the database to indicate that the worker is still active and processing the job. This helps prevent other workers from claiming the same job as stale.
+        """
         while True:
             await asyncio.sleep(30)
             try:
@@ -82,6 +91,20 @@ class Worker:
                 logger.warning(f"Heartbeat failed for #{job_id}: {e}")
 
     async def _update_discord_status(self, job: Dict[str, Any], status_text: str, color: int):
+        """
+        Adds or updates a status embed in the original Discord message to reflect the current processing stage.
+        Additionally, it includes a footer to indicate that the process might take some time, setting user expectations.
+        
+        As the job progresses through different stages (e.g., "Processing...", "Uploading..."), this method can be called to update the embed's description and color accordingly, providing real-time feedback to the user in Discord.
+        
+        Args:
+            job (Dict[str, Any]): The job dictionary containing necessary information for the Discord message.
+            status_text (str): The text to display in the embed's "Status" field, indicating the current stage of processing.
+            color (int): The color code for the embed, which can be used to visually differentiate stages (e.g., processing might be yellow, uploading might be blue).
+            
+        Returns:
+            None
+        """
         if not (job.get("token") and job.get("application_id") and self.session):
             return
 
@@ -101,6 +124,9 @@ class Worker:
             logger.warning(f"Failed to update status embed: {e}")
 
     async def _cleanup_discord_message(self, job: Dict[str, Any]):
+        """
+        Deletes the progress message in Discord for a given job. This is typically called after the job has been completed and the final delivery message has been sent, to clean up any temporary status messages that were used during processing.
+        """
         if not (job.get("token") and job.get("application_id") and self.session):
             return
 
@@ -112,6 +138,9 @@ class Worker:
             logger.warning(f"Failed to delete progress message: {e}")
 
     async def _process_job(self, job: Dict[str, Any]):
+        """
+        Handles the entire lifecycle of a single job, from processing the image to uploading it and sending the final notification. It also manages the heartbeat monitor to ensure the job is not marked as stale while being processed.
+        """
         job_id = job["job_id"]
         logger.info(f"🔄 Processing job #{job_id} ({job['model_type']}) ...")
 

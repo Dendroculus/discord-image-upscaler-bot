@@ -2,9 +2,9 @@ import os
 import discord
 from discord.ext import commands
 from database import Database
-from utils.PatchFix import patch_torchvision
+from utils.patch_fix import patch_torchvision
 from constants.configs import DISCORD_BOT_TOKEN
-from loggers.BotLogger import init_logging
+from loggers.bot_logger import init_logging
 
 init_logging(
     log_dir=os.path.join("logs", "bot_logs"), 
