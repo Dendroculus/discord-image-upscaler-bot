@@ -1,3 +1,10 @@
+"""
+configs.py
+
+Loads and validates environment variables.
+Responsibility: Serves as the central configuration module for the application, ensuring 
+critical secrets and settings are present and valid before the application boots.
+"""
 import os
 from dotenv import load_dotenv
 import uuid
@@ -11,3 +18,16 @@ MAX_IMAGE_DIMENSION = 1280
 MAX_IMAGE_SIZE = 8 * 1024 * 1024  # 8 MB
 FILENAME = f"upscaled_{uuid.uuid4().hex[:8]}.png"
 AZURE_CONTAINER_NAME = "images"  # NOTE: This container must exist and be named exactly "images" in Azure Blob Storage
+
+required_vars = {
+    "DISCORD_TOKEN": DISCORD_BOT_TOKEN,
+    "POSTGRE_CONN_STRING": DATABASE,
+    "AZURE_CONNECTION_STRING": AZURE_STORAGE_BLOB,
+}
+
+missing_vars = [key for key, value in required_vars.items() if not value]
+
+if missing_vars:
+    raise EnvironmentError(
+        f"Missing required environment variables: {', '.join(missing_vars)}"
+    )

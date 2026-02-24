@@ -1,10 +1,17 @@
+"""
+image_processing.py
+
+Handles the core AI upscaling logic using RealESRGAN.
+Responsibility: Downloads, preprocesses, and upscales images utilizing 
+PyTorch and RealESRGAN models while managing GPU memory efficiently.
+"""
 import os
 import cv2
-import requests
+import aiohttp
+import asyncio
 import numpy as np
 import torch
 import gc
-import shutil
 import uuid
 from PIL import Image
 from basicsr.archs.rrdbnet_arch import RRDBNet
@@ -31,6 +38,9 @@ class AIUpscaler:
     """
 
     def __init__(self):
+        """
+        Initializes the AIUpscaler and detects available compute devices.
+        """
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.use_half = True if self.device.type == "cuda" else False
         self._engines = {}
@@ -41,7 +51,7 @@ class AIUpscaler:
         Initializes and loads specific RealESRGAN weights into memory.
 
         Args:
-            model_type (str): Identifier for the model ('anime' or 'general').
+            model_type (str): Identifier for the model.
 
         Returns:
             RealESRGANer: The configured inference engine instance.
@@ -49,12 +59,10 @@ class AIUpscaler:
         Raises:
             FileNotFoundError: If the model weight file is missing from the disk.
         """
-        if model_type == "anime":
-            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4)
-            path = ModelRegistry.get_path("anime")
-        else:
-            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
-            path = ModelRegistry.get_path("general")
+        arch_config = ModelRegistry.get_arch(model_type)
+        path = ModelRegistry.get_path(model_type)
+        
+        model = RRDBNet(**arch_config)
 
         if not os.path.exists(path):
             raise FileNotFoundError(f"Model file missing: {path}")
@@ -73,14 +81,22 @@ class AIUpscaler:
         return engine
 
     def _get_engine(self, model_type: str) -> RealESRGANer:
-        """Retrieves a cached model instance or loads it on demand."""
+        """
+        Retrieves a cached model instance or loads it on demand.
+        
+        Args:
+            model_type (str): Identifier for the model.
+            
+        Returns:
+            RealESRGANer: The configured inference engine instance.
+        """
         if model_type not in self._engines:
             self._load_engine(model_type)
         return self._engines[model_type]
 
-    def _download_image(self, url: str, job_id: int) -> str:
+    async def _download_image(self, url: str, job_id: int, session: aiohttp.ClientSession) -> str:
         """
-        Streams an image from a URL to a temporary file.
+        Streams an image from a URL to a temporary file asynchronously.
 
         Using streaming prevents loading the entire raw file into RAM at once,
         which safeguards against large file downloads.
@@ -88,6 +104,7 @@ class AIUpscaler:
         Args:
             url (str): The source URL.
             job_id (int): Job identifier for logging context.
+            session (aiohttp.ClientSession): The asynchronous HTTP client session.
 
         Returns:
             str: The local filepath of the downloaded temporary file.
@@ -95,10 +112,11 @@ class AIUpscaler:
         temp_filename = f"temp_{job_id}_{uuid.uuid4().hex[:8]}.png"
         print(f"📥 Job #{job_id} - Downloading image stream...")
         
-        with requests.get(url, stream=True) as r:
+        async with session.get(url) as r:
             r.raise_for_status()
             with open(temp_filename, 'wb') as f:
-                shutil.copyfileobj(r.raw, f)
+                async for chunk in r.content.iter_chunked(8192):
+                    f.write(chunk)
         
         return temp_filename
 
@@ -183,9 +201,9 @@ class AIUpscaler:
             torch.cuda.empty_cache()
             gc.collect()
 
-    def run_upscale(self, image_url: str, job_id: int, model_type: str = "general") -> Optional[bytes]:
+    async def run_upscale(self, image_url: str, job_id: int, model_type: str, session: aiohttp.ClientSession) -> Optional[bytes]:
         """
-        Orchestrates the complete upscaling pipeline.
+        Orchestrates the complete upscaling pipeline asynchronously.
 
         Sequence:
         1. Clean VRAM.
@@ -198,6 +216,7 @@ class AIUpscaler:
             image_url (str): URL of the image to upscale.
             job_id (int): Unique identifier for the job.
             model_type (str): 'general' or 'anime'.
+            session (aiohttp.ClientSession): Active HTTP session.
 
         Returns:
             Optional[bytes]: The PNG image data, or None if an error occurred.
@@ -208,9 +227,9 @@ class AIUpscaler:
                 torch.cuda.empty_cache()
                 gc.collect()
 
-            temp_filename = self._download_image(image_url, job_id)
-            img_array = self._load_and_preprocess(temp_filename, job_id)
-            result_bytes = self._run_inference(img_array, model_type, job_id)
+            temp_filename = await self._download_image(image_url, job_id, session)
+            img_array = await asyncio.to_thread(self._load_and_preprocess, temp_filename, job_id)
+            result_bytes = await asyncio.to_thread(self._run_inference, img_array, model_type, job_id)
             
             return result_bytes
 
@@ -220,19 +239,3 @@ class AIUpscaler:
         
         finally:
             self._cleanup_resources(temp_filename)
-
-engine = AIUpscaler()
-
-def process_image(url: str, job_id: int, model_type: str) -> Optional[bytes]:
-    """
-    Public entry point for the AI upscaling service.
-
-    Args:
-        url (str): The image source URL.
-        job_id (int): Unique identifier for the job.
-        model_type (str): The model variant ('general' or 'anime').
-
-    Returns:
-        Optional[bytes]: Upscaled image bytes (PNG) or None on failure.
-    """
-    return engine.run_upscale(url, job_id, model_type)

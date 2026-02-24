@@ -1,7 +1,15 @@
+"""
+worker.py
+
+Background worker process for processing image upscaling jobs.
+Responsibility: Polls the database for queued jobs, manages the AI upscaling
+lifecycle, uploads results, and notifies the Discord webhook.
+"""
 from utils.patch_fix import patch_torchvision
 import asyncio
 import aiohttp
 import os
+import glob
 import logging
 from functools import wraps
 from typing import Optional, Dict, Any
@@ -10,7 +18,7 @@ from asyncio.proactor_events import _ProactorBasePipeTransport
 import contextlib
 from database import Database
 from loggers.bot_logger import init_logging
-from utils.image_processing import process_image
+from utils.image_processing import AIUpscaler
 from constants.emojis import process, customs
 
 from services.storage_service import StorageService
@@ -19,6 +27,12 @@ from services.notification_service import NotificationService
 def silence_event_loop_closed(func):
     """
     Wrapper to suppress 'Event loop is closed' RuntimeError on Windows.
+    
+    Args:
+        func (Callable): The function to wrap.
+        
+    Returns:
+        Callable: The wrapped function.
     """
     @wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -46,9 +60,16 @@ class Worker:
     """
 
     def __init__(self, poll_interval: float = 2.0):
+        """
+        Initializes the worker with configuration and dependencies.
+        
+        Args:
+            poll_interval (float): Seconds to wait between database polls.
+        """
         self.db = Database()
         self.poll_interval = poll_interval
         self.session: Optional[aiohttp.ClientSession] = None
+        self.ai_engine = AIUpscaler()
 
     async def start(self):
         """
@@ -61,6 +82,14 @@ class Worker:
             await self.db.init_schema()
             
             logger.info("🧹 Running startup maintenance...")
+            
+            orphaned_files = glob.glob("temp_*.png")
+            for f in orphaned_files:
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+            
             await self.db.recover_stale_jobs()
             await self.db.prune_old_jobs()
             
@@ -80,7 +109,10 @@ class Worker:
 
     async def _run_heartbeat_monitor(self, job_id: int):
         """
-        Periodically updates the heartbeat timestamp for the given job ID in the database to indicate that the worker is still active and processing the job. This helps prevent other workers from claiming the same job as stale.
+        Periodically updates the heartbeat timestamp for the given job ID in the database to indicate that the worker is still active and processing the job.
+        
+        Args:
+            job_id (int): The ID of the active job.
         """
         while True:
             await asyncio.sleep(30)
@@ -93,17 +125,11 @@ class Worker:
     async def _update_discord_status(self, job: Dict[str, Any], status_text: str, color: int):
         """
         Adds or updates a status embed in the original Discord message to reflect the current processing stage.
-        Additionally, it includes a footer to indicate that the process might take some time, setting user expectations.
-        
-        As the job progresses through different stages (e.g., "Processing...", "Uploading..."), this method can be called to update the embed's description and color accordingly, providing real-time feedback to the user in Discord.
         
         Args:
             job (Dict[str, Any]): The job dictionary containing necessary information for the Discord message.
-            status_text (str): The text to display in the embed's "Status" field, indicating the current stage of processing.
-            color (int): The color code for the embed, which can be used to visually differentiate stages (e.g., processing might be yellow, uploading might be blue).
-            
-        Returns:
-            None
+            status_text (str): The text to display in the embed's "Status" field.
+            color (int): The color code for the embed.
         """
         if not (job.get("token") and job.get("application_id") and self.session):
             return
@@ -125,7 +151,10 @@ class Worker:
 
     async def _cleanup_discord_message(self, job: Dict[str, Any]):
         """
-        Deletes the progress message in Discord for a given job. This is typically called after the job has been completed and the final delivery message has been sent, to clean up any temporary status messages that were used during processing.
+        Deletes the progress message in Discord for a given job.
+        
+        Args:
+            job (Dict[str, Any]): The job dictionary.
         """
         if not (job.get("token") and job.get("application_id") and self.session):
             return
@@ -139,7 +168,10 @@ class Worker:
 
     async def _process_job(self, job: Dict[str, Any]):
         """
-        Handles the entire lifecycle of a single job, from processing the image to uploading it and sending the final notification. It also manages the heartbeat monitor to ensure the job is not marked as stale while being processed.
+        Handles the entire lifecycle of a single job, from processing the image to uploading it and sending the final notification.
+        
+        Args:
+            job (Dict[str, Any]): The job data dictionary.
         """
         job_id = job["job_id"]
         logger.info(f"🔄 Processing job #{job_id} ({job['model_type']}) ...")
@@ -153,11 +185,11 @@ class Worker:
                 5763719
             )
             
-            image_data = await asyncio.to_thread(
-                process_image,
+            image_data = await self.ai_engine.run_upscale(
                 job["image_url"],
                 job["job_id"],
                 job["model_type"],
+                self.session
             )
 
             if not image_data:
@@ -187,7 +219,7 @@ class Worker:
 
         except Exception as e:
             await self.db.mark_failed(job_id, str(e))
-            logger.error(f"❌ Job #{job_id} failed: {e}")
+            logger.exception(f"❌ Job #{job_id} failed:")
             
         finally:
             heartbeat_task.cancel()
@@ -195,6 +227,9 @@ class Worker:
                 await heartbeat_task
 
 async def main():
+    """
+    Main entry point for the worker script.
+    """
     worker = Worker(poll_interval=2.0)
     await worker.start()
 
