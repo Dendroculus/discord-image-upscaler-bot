@@ -53,7 +53,7 @@ class UpscaleBot(commands.AutoShardedBot):
         """ "!" is a placeholder prefix to satisfy discord.py requirements so it won't raise error  """
         self.db = Database()
         self.initial_extensions = [
-            "cogs.UpScale",
+            "cogs.upscale",
         ]
 
     async def setup_hook(self):
