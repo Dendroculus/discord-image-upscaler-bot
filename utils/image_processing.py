@@ -8,6 +8,7 @@ PyTorch and RealESRGAN models while managing GPU memory efficiently.
 import os
 import cv2
 import aiohttp
+import aiofiles
 import asyncio
 import numpy as np
 import torch
@@ -99,7 +100,8 @@ class AIUpscaler:
         Streams an image from a URL to a temporary file asynchronously.
 
         Using streaming prevents loading the entire raw file into RAM at once,
-        which safeguards against large file downloads.
+        which safeguards against large file downloads. Uses aiofiles for
+        non-blocking file I/O operations.
 
         Args:
             url (str): The source URL.
@@ -114,9 +116,9 @@ class AIUpscaler:
         
         async with session.get(url) as r:
             r.raise_for_status()
-            with open(temp_filename, 'wb') as f:
+            async with aiofiles.open(temp_filename, 'wb') as f:
                 async for chunk in r.content.iter_chunked(8192):
-                    f.write(chunk)
+                    await f.write(chunk)
         
         return temp_filename
 
