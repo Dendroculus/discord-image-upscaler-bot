@@ -36,7 +36,7 @@ We welcome all contributors — big or small. Keep changes focused and well-docu
 ## Getting the code
 1. Fork the repo on GitHub.
 2. Clone your fork locally:
-   git clone https://github.com/Dendroculus/discord-image-upscaler-bot
+   git clone https://github.com/Yoruxyv/discord-image-upscaler-bot
 3. Create a feature branch from `main`:
    git checkout -b feat/meaningful-name
 

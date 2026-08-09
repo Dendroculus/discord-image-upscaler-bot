@@ -37,7 +37,7 @@
 ## 获取代码
 1. 在 GitHub 上 Fork 本仓库。
 2. 将您的 Fork 克隆到本地：
-   git clone https://github.com/Dendroculus/discord-image-upscaler-bot
+   git clone https://github.com/Yoruxyv/discord-image-upscaler-bot
 3. 从 main 分支创建一个功能分支：
    git checkout -b feat/meaningful-name
 
