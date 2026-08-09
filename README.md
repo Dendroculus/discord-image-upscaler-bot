@@ -24,7 +24,7 @@ Discord Image Upscaler Bot is a simple, reliable tool that accepts image attachm
 
 | Original (Low Res) | Real-ESRGAN Upscaled (4x) |
 | :---: | :---: |
-| <img src="https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/assets/previews/ado.jpg" width="300"> | <img src="https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/assets/previews/ado_upscaled.png" width="300"> |
+| <img src="https://github.com/Yoruxyv/discord-image-upscaler-bot/blob/main/assets/previews/ado.jpg" width="300"> | <img src="https://github.com/Yoruxyv/discord-image-upscaler-bot/blob/main/assets/previews/ado_upscaled.png" width="300"> |
 
 <details>
   <summary><b>🎥 Click to watch the preview (20 s) </b></summary>
@@ -44,7 +44,7 @@ Discord Image Upscaler Bot is a simple, reliable tool that accepts image attachm
 
 ## 🏗️ Architecture
 
-<img src="https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/assets/ArchitectureDiagram.png">
+<img src="https://github.com/Yoruxyv/discord-image-upscaler-bot/blob/main/assets/ArchitectureDiagram.png">
 
 ## 📂 Project Structure
 
@@ -117,7 +117,7 @@ The code expects two model files by default: `RealESRGAN_x4plus.pth` for general
 
 Start the worker with `python worker.py` to begin polling for queued jobs and performing upscales. Start the bot with `python bot.py` to register the `/upscale` slash command and run the delivery loop. Use `/upscale` in a server where the bot is invited; upload an image attachment and choose the model type. The command will confirm a queued job ID and the worker will process the image and save the output into `output/`; the bot will then post the upscaled image into the originating channel and remove the local file. Make sure your device is capable of running the models, ideally with a CUDA-capable GPU and sufficient VRAM (4GB+ recommended).
 
-Or if you want to quit that hassle, you can use the batch files provided in the repository root : [Batch File Link ](https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/start_upscaler.bat)
+Or if you want to quit that hassle, you can use the batch files provided in the repository root : [Batch File Link ](https://github.com/Yoruxyv/discord-image-upscaler-bot/blob/main/start_upscaler.bat)
 
 ## 🗂️ Commands
 

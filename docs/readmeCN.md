@@ -24,7 +24,7 @@ Discord Image Upscaler Bot 是一个简单且可靠的工具，使用斜杠命�
 
 | 原图（低分辨率） | Real-ESRGAN 放大（4x） |
 | :---: | :---: |
-| <img src="https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/assets/previews/ado.jpg" width="300"> | <img src="https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/assets/previews/ado_upscaled.png" width="300"> |
+| <img src="https://github.com/Yoruxyv/discord-image-upscaler-bot/blob/main/assets/previews/ado.jpg" width="300"> | <img src="https://github.com/Yoruxyv/discord-image-upscaler-bot/blob/main/assets/previews/ado_upscaled.png" width="300"> |
 
 <details>
   <summary><b>🎥 点击观看预览（20 秒）</b></summary>
@@ -45,7 +45,7 @@ Discord Image Upscaler Bot 是一个简单且可靠的工具，使用斜杠命�
 
 ## 🏗️ 架构
 
-<img src="https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/assets/ArchitectureDiagram.png">
+<img src="https://github.com/Yoruxyv/discord-image-upscaler-bot/blob/main/assets/ArchitectureDiagram.png">
 
 
 ## 📂 项目结构
@@ -122,7 +122,7 @@ AZURE_CONNECTION_STRING=your_azure_connection_string_here
 
 运行 Worker：`python worker.py`，开始轮询队列并执行放大任务。运行 Bot：`python bot.py`，注册 `/upscale` 斜杠命令并运行交付循环。在邀请了机器人服务器中使用 `/upscale`，上传图像附件并选择模型类型。该命令会确认一个排队的任务 ID；Worker 会处理图像并将输出保存到 `output/`；Bot 随后会把放大后的图像发布回原始频道并删除本地文件。请确保你的设备能够运行模型，推荐配备支持 CUDA 且显存充足（建议 4GB+）的 GPU。
 
-或者如果你想省去这些步骤，可以使用仓库根目录提供的批处理文件： [Batch File Link](https://github.com/Dendroculus/discord-image-upscaler-bot/blob/main/start_upscaler.bat)
+或者如果你想省去这些步骤，可以使用仓库根目录提供的批处理文件： [Batch File Link](https://github.com/Yoruxyv/discord-image-upscaler-bot/blob/main/start_upscaler.bat)
 
 ## 🗂️ 命令
 
